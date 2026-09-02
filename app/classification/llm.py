@@ -1,7 +1,8 @@
 import copy
 import json
+from enum import Enum
 from pathlib import Path
-from typing import Any
+from typing import Any, Annotated
 import yaml
 from litellm import completion as prompt_llm
 from pydantic import BaseModel, Field, ConfigDict
@@ -12,10 +13,26 @@ from app.util import measure_runtime
 settings = get_settings()
 
 
+class ResponseAttribute(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+    reasoning: Annotated[str, Field(..., description="Reasoning or explanation for the annotation decision")]
+    decision: Annotated[bool, Field(..., description="The LLM's annotation for this attribute.")]
+
+
+class ResponseSchemaDEET(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+    attribute_0: ResponseAttribute
+
+
 class ResponseSchema(BaseModel):
     model_config = ConfigDict(extra="forbid")
     reasoning: str = Field(..., description="Step-by-step assessment against the criterion.")
     decision: bool = Field(..., description="Final annotation.")
+
+
+class CommunicationFormat(str, Enum):
+    deet = 'deet'
+    improved = 'improved'
 
 
 class SystemPrompt(BaseModel):
@@ -51,6 +68,7 @@ class PromptConfig(BaseModel):
         default=settings.max_context_tokens,
         description="Maximum input context length in tokens (system + prompt + attributes + document).",
     )
+    communication_format: CommunicationFormat = Field(default=CommunicationFormat.deet, description="Response format to follow DEET standard or format optimised for single boolean decisions")
 
     @classmethod
     def from_file(cls, path: Path) -> 'PromptConfig':
@@ -93,10 +111,26 @@ class LLM:
             }]
 
     def _call_llm(self, text: str, seed_offset: int = 0) -> tuple[str, list[dict[str, Any]], int, int, int, float]:
-        messages: list[dict[str, str]] = [
-            *copy.deepcopy(self.system_messages),
-            {"role": "user", "content": json.dumps({"record": text}, ensure_ascii=False)}
-        ]
+        messages: list[dict[str, str]] = copy.deepcopy(self.system_messages)
+        if self.config.communication_format == CommunicationFormat.deet:
+            messages.append(
+                {"role": "user", "content": json.dumps(
+                    {
+                        "context": text,
+                        "attributes": [{
+                            "attribute_id": 0,
+                            "output_data_type": "boolean"
+                        }]
+                    }, ensure_ascii=False,
+                )},
+            )
+            schema = ResponseSchemaDEET.model_json_schema()
+        elif self.config.communication_format == CommunicationFormat.deet:
+            messages.append({"role": "user", "content": json.dumps({"record": text}, ensure_ascii=False)})
+            schema = ResponseSchema.model_json_schema()
+        else:
+            raise ValueError(f'Undefined communication format: {self.config.communication_format}')
+
         est_num_tokens = estimate_prompt_tokens(messages)
         if est_num_tokens > self.config.max_context_tokens:
             raise RuntimeError(f'This request likely exceeds the maximum prompt length: {est_num_tokens:,} > {self.config.max_context_tokens:,}')
@@ -113,7 +147,7 @@ class LLM:
                     "type": "json_schema",
                     "json_schema": {
                         "name": "llm_annotation_response",
-                        "schema": ResponseSchema.model_json_schema(),
+                        "schema": schema,
                         "strict": True,
                     },
                 },
