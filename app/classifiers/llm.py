@@ -251,8 +251,8 @@ class LLMClassifier:
         annotations: list[BooleanAnnotation] = []
         num_incl = 0
         num_excl = 0
-        for _vote_num in range(self.config.votes):
-            response_content, messages, num_input_tokens, num_output_tokens, num_cached_tokens, process_seconds = self._call_llm(text)
+        for vote_num in range(self.config.votes):
+            response_content, messages, num_input_tokens, num_output_tokens, num_cached_tokens, process_seconds = self._call_llm(text, seed_offset=vote_num)
             annotation = self._convert_response(response_content)
             annotations.append(annotation)
             num_incl += int(annotation.value)
