@@ -15,6 +15,9 @@ inclusive for identifying references on (climate AND (health OR mitigation actio
 references are then passed to a second _balanced prompt_. Remaining references are finally passed to the third
 _high-precision_ prompt to identify references on ((climate OR mitigation OR adaptation) AND health).
 
+The LLM prompts can be configured to run in a majority vote mode. In that case, each prompt will be repeated until a
+majority is reached. If you fixed the random seed and temperature, the seed will be offset on each iteration. 
+
 ## Deployment notes
 
 Configuration is controlled by `pydantic_settings` and is partially shared across all robots and partially specific to
