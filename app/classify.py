@@ -6,6 +6,9 @@ from .util import Runner
 class EnhancementRunner(Runner):
     """Runner for writing abstract enhancements to repository.."""
 
+    async def _register_listener(self) -> None:
+        pass  # TODO
+
     async def _loop_task(self) -> None:
         """Task for single loop of the enhancement runner."""
         # Poll for approved requests for enhancements
@@ -30,3 +33,15 @@ class EnhancementRunner(Runner):
         self.loop_logger.info(
             f"[Total: {self.total_entries_processed:,} entries] Submitted {len(cache_entries):,} enhancements.",
         )
+
+
+#  Enhancement(
+#                 reference_id=record.destiny_id,
+#                 source=f"{self.settings.repository_provenance} ({record.source or 'OTHER'})",
+#                 visibility=Visibility.RESTRICTED,
+#                 robot_version=self.settings.robot_version,
+#                 content=AbstractContentEnhancement(
+#                     abstract=record.abstract,
+#                     process=AbstractProcessType.OTHER,
+#                 ),
+#             )

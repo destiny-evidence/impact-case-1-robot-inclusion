@@ -13,7 +13,7 @@ if TYPE_CHECKING:
     from .util import Runner
 
 
-class RunnerTask(str, Enum):  # noqa: UP042
+class RunnerTask(str, Enum):
     """Enum for types of runners."""
 
     classify = "classify"
@@ -32,10 +32,7 @@ def main(
     loop_interval: int
     if task == RunnerTask.classify:
         SelectedRunner = ClassificationRunner  # noqa: N806
-        loop_interval = settings.classify_interval_seconds
-    elif task == RunnerTask.match:
-        SelectedRunner = MatchRunner  # noqa: N806
-        loop_interval = settings.match_interval_seconds
+        loop_interval = settings.llm_interval_seconds
     else:
         raise ValueError(f"Unknown runner type: {task}")
 

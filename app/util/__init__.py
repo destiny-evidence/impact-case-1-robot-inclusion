@@ -1,9 +1,9 @@
 """Utility module."""
 
 from .config import Settings, get_logger, get_settings
-from .repository import Repository
+from .repository import Repository, get_title_abstract_from_reference
 from .runner import Runner
-from .util import get_abstract, measure_runtime
+from .util import measure_runtime
 
 __all__ = [
     "Repository",
@@ -11,6 +11,6 @@ __all__ = [
     "Settings",
     "get_logger",
     "get_settings",
-    "get_abstract",
+    "get_title_abstract_from_reference",
     "measure_runtime",
 ]

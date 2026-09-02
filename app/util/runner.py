@@ -64,10 +64,10 @@ class Runner(ABC):
         """Robot's core working method."""
         self.logger.info(
             f"Initialising main loop for {self.settings.robot_name} with a {self.loop_interval_seconds}s polling interval "
-            f"and batch sizes {self.settings.request_batch_size:,} (poll) and {self.settings.fulfil_batch_size} (fulfil)",
+            f"and default batch size {self.settings.batch_size:,}.",
         )
 
-        def shutdown_handler(signum: int, _frame: FrameType | None) -> None:
+        def shutdown_handler(signum: int, _frame: "FrameType | None") -> None:
             self.logger.info(f"Received signal {signum}, initiating graceful shutdown...")
             self.shutdown_event.set()
 

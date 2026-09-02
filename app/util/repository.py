@@ -1,20 +1,14 @@
 """Utility class for interacting with the repository."""
 
-import asyncio
 from typing import TYPE_CHECKING
+from uuid import UUID
 
 import httpx
 from destiny_sdk.client import KeycloakOAuthMiddleware, OAuthClient, RobotClient
 from destiny_sdk.enhancements import (
     AbstractContentEnhancement,
-    AbstractProcessType,
-    Enhancement,
     BibliographicMetadataEnhancement,
-)
-from destiny_sdk.identifiers import (
-    ExternalIdentifierType,
-    IdentifierLookup,
-    OpenAlexIdentifier,
+    Enhancement,
 )
 from destiny_sdk.references import Reference
 from destiny_sdk.robots import (
@@ -22,11 +16,9 @@ from destiny_sdk.robots import (
     RobotEnhancementBatch,
     RobotEnhancementBatchResult,
 )
-from destiny_sdk.visibility import Visibility
-from uuid import UUID
 
 if TYPE_CHECKING:
-    import logging
+    from logging import Logger
 
     from .config import Settings
 
@@ -36,7 +28,7 @@ HTTP_TIMEOUT_SECONDS = 600
 class Repository:
     """Utility class for interacting with the repository."""
 
-    def __init__(self, settings: Settings, logger: logging.Logger) -> None:
+    def __init__(self, settings: "Settings", logger: "Logger") -> None:
         """Initialise the repository utils."""
         if settings.robot_secret is None or settings.keycloak_id is None or settings.keycloak_secret is None:
             raise ValueError
@@ -64,50 +56,6 @@ class Repository:
             timeout=HTTP_TIMEOUT_SECONDS,
         )
 
-    async def query_repository(self, cache_entries: list[Record]) -> list[tuple[Record, Record]]:
-        """
-        Get DESTinY references for the given PIK works, matching by OpenAlex ID.
-
-        The API call passes IDs via URL which is the limiting factor on batch size.
-        """
-        entries = {entry.openalex_id: entry for entry in cache_entries if entry.openalex_id is not None}
-
-        query: list[str | IdentifierLookup] = [
-            IdentifierLookup.from_identifier(
-                OpenAlexIdentifier(
-                    identifier=openalex_id,
-                    identifier_type=ExternalIdentifierType.OPEN_ALEX,
-                ),
-            )
-            for openalex_id in entries
-        ]
-
-        batch_size = self.settings.repository_lookup_batch_size
-        query_batches = [query[i : i + batch_size] for i in range(0, len(query), batch_size)]
-
-        semaphore = asyncio.Semaphore(self.settings.repository_lookup_concurrency)
-
-        async def lookup_batch(batch: list[str | IdentifierLookup]) -> list[Reference]:
-            async with semaphore:
-                return await asyncio.to_thread(self.repo_client.lookup, batch, timeout=HTTP_TIMEOUT_SECONDS)
-
-        batch_results = await asyncio.gather(*(lookup_batch(batch) for batch in query_batches))
-        references = [reference for batch in batch_results for reference in batch]
-
-        matched_references = []
-        for reference in references:
-            flat_reference = flatten_reference(reference)
-            if flat_reference.openalex_id is not None and flat_reference.openalex_id in entries:
-                matched_references.append((entries[flat_reference.openalex_id], flat_reference))
-
-        self.logger.debug(
-            f"Queried for {len(entries):,} OpenAlex IDs in {len(query_batches):,} lookup requests "
-            f"(batch size <= {batch_size}, concurrency {self.settings.repository_lookup_concurrency}); "
-            f"received {len(references):,} references of which {len(matched_references):,} matched"
-        )
-
-        return matched_references
-
     def request_to_enhance(self, destiny_ids: list[UUID]) -> None:
         """Ask repository if we can provide enhancements for these IDs."""
         response = self.repo_client.get_client().post(
@@ -115,18 +63,19 @@ class Repository:
             json=EnhancementRequestIn(
                 robot_id=self.settings.robot_id,
                 reference_ids=destiny_ids,
-                source=self.settings.repository_provenance,
+                # source=self.settings.repository_provenance, # FIXME
             ).model_dump(mode="json"),
         )
         response.raise_for_status()
 
     async def get_next_batch(
         self,
+        batch_size: int | None = None,
     ) -> tuple[RobotEnhancementBatch | None, list[Reference] | None]:
         """Ask repository which references it wants enhancements for."""
         batch_info = self.robot_client.poll_robot_enhancement_batch(
             robot_id=self.settings.robot_id,
-            limit=self.settings.fulfil_batch_size,
+            limit=self.settings.batch_size if batch_size is None else batch_size,
             timeout=HTTP_TIMEOUT_SECONDS,
         )
         if batch_info is None:
@@ -141,34 +90,17 @@ class Repository:
 
         return batch_info, references
 
-    async def submit_enhancements(self, batch_info: RobotEnhancementBatch, cache_entries: list[Record]) -> None:
+    async def submit_enhancements(self, batch_info: RobotEnhancementBatch, enhancements: list[Enhancement]) -> None:
         """Submit enhancements to repository."""
-        enhancements = self._records_to_enhancements(cache_entries)
+        file_content = b""
+        for enhancement in enhancements:
+            file_content += (enhancement.to_jsonl() + "\n").encode("utf-8")
+
         await self._upload_enhancements(
             target_url=str(batch_info.result_storage_url),
-            jsonl_enhancements=enhancements,
+            jsonl_enhancements=file_content,
         )
         self._finalise_enhancement_batch(batch_info.id)
-
-    def _records_to_enhancements(self, records: list[Record]) -> bytes:
-        file_content = b""
-        for record in records:
-            if record.destiny_id is None or record.abstract is None:
-                raise ValueError("Cache entry is missing destiny ID or abstract!")
-
-            abstract_enhancement = Enhancement(
-                reference_id=record.destiny_id,
-                source=f"{self.settings.repository_provenance} ({record.source or 'OTHER'})",
-                visibility=Visibility.RESTRICTED,
-                robot_version=self.settings.robot_version,
-                content=AbstractContentEnhancement(
-                    abstract=record.abstract,
-                    process=AbstractProcessType.OTHER,
-                ),
-            )
-            file_content += (abstract_enhancement.to_jsonl() + "\n").encode("utf-8")
-
-        return file_content
 
     async def _upload_enhancements(self, target_url: str, jsonl_enhancements: bytes) -> None:
         response = await self.blob_client.put(

@@ -8,12 +8,12 @@ repos:
       - id: ruff-format
         args:
           - --config=pyproject.toml
-#  - repo: https://github.com/igorshubovych/markdownlint-cli
-#    rev: v0.43.0
-#    hooks:
-#      - id: markdownlint-fix
-#        args:
-#          - --dot
+  - repo: https://github.com/igorshubovych/markdownlint-cli
+    rev: v0.49.1
+    hooks:
+      - id: markdownlint-fix
+        args:
+          - --dot
   - repo: https://github.com/Lucas-C/pre-commit-hooks
     rev: v1.5.5
     hooks:
@@ -27,7 +27,15 @@ repos:
     hooks:
       - id: mypy
         args: [--config-file=pyproject.toml, --ignore-missing-imports]
-        additional_dependencies: [pytest, pydantic, types-cachetools, httpx]
+        additional_dependencies:
+          [
+            pytest,
+            pydantic,
+            pydantic-settings,
+            types-cachetools,
+            httpx,
+            types-pyyaml,
+          ]
   - repo: https://github.com/pre-commit/mirrors-prettier
     rev: v3.1.0
     hooks:

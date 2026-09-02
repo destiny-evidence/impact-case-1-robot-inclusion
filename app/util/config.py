@@ -4,18 +4,17 @@ import logging
 import tomllib
 from enum import StrEnum
 from functools import lru_cache
+from pathlib import Path
 from typing import Any
+from uuid import UUID
 
 from pydantic import Field, HttpUrl, SecretStr
 from pydantic_settings import BaseSettings, SettingsConfigDict
-from uuid import UUID
-from pathlib import Path
 
 
 def configure_logging(base_level: int | str = "INFO") -> None:
     """Configure logging for the application."""
-
-    httpx_level = logging.DEBUG if (base_level == logging.DEBUG or base_level == "DEBUG") else logging.WARNING
+    httpx_level = logging.DEBUG if base_level in {logging.DEBUG, "DEBUG"} else logging.WARNING
     logging.getLogger("httpx").setLevel(httpx_level)
 
     logging.basicConfig(

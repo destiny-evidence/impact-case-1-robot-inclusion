@@ -1,12 +1,14 @@
-import re
 import logging
+import re
 from pathlib import Path
-from typing import Callable, Any, TYPE_CHECKING
+from typing import TYPE_CHECKING, Any
 
 import joblib
 import numpy as np
 
 if TYPE_CHECKING:
+    from collections.abc import Callable
+
     from sklearn.pipeline import Pipeline
 
 logger = logging.getLogger(__name__)
@@ -19,7 +21,7 @@ def preprocess_text(texts: list[str]) -> list[str]:
 
 
 class SklearnClassifier:
-    def __init__(self, path: Path):
+    def __init__(self, path: Path) -> None:
         source = str((path / "model.sklearn").resolve())
         logger.info(f"Loading trained model from {source}")
 
@@ -29,12 +31,12 @@ class SklearnClassifier:
         pipeline = info.pop("pipeline_")
         threshold = info.pop("threshold_", DEFAULT_THRESHOLD)
 
-        self.model_: "Pipeline" = model
+        self.model_: Pipeline = model
         self.threshold_: float = threshold
-        self.pipeline_: Callable[..., "Pipeline"] = pipeline
+        self.pipeline_: Callable[..., Pipeline] = pipeline
         self.params_: dict[str, Any] = info
 
-    def predict_proba(self, X: list[str]) -> np.ndarray:
+    def predict_proba(self, X: list[str]) -> np.ndarray:  # noqa: N803
         y_pred: np.ndarray
         if hasattr(self.model_, "predict_proba"):
             y_pred = self.model_.predict_proba(preprocess_text(X))[:, 1]
@@ -46,5 +48,5 @@ class SklearnClassifier:
         logger.debug(f"  > Predictions include {(y_pred > self.threshold_).sum():,} records at threshold >{self.threshold_}")
         return y_pred
 
-    def predict(self, X: list[str]) -> np.ndarray:
+    def predict(self, X: list[str]) -> np.ndarray:  # noqa: N803
         return self.predict_proba(X) >= self.threshold_

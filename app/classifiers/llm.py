@@ -2,13 +2,16 @@ import copy
 import json
 from enum import Enum
 from pathlib import Path
-from typing import Any, Annotated
+from typing import Annotated, Any
+
 import yaml
-from litellm import completion as prompt_llm
-from pydantic import BaseModel, Field, ConfigDict
 from destiny_sdk.enhancements import BooleanAnnotation
-from app import get_settings
-from app.util import measure_runtime
+from litellm import completion as prompt_llm
+from litellm.litellm_core_utils.streaming_handler import CustomStreamWrapper
+from litellm.types.utils import ModelResponse
+from pydantic import BaseModel, ConfigDict, Field
+
+from app.util import get_settings, measure_runtime
 
 settings = get_settings()
 
@@ -32,7 +35,7 @@ class ResponseSchema(BaseModel):
 
 class CommunicationFormat(str, Enum):
     deet = "deet"
-    improved = "improved"
+    optimized = "optimized"
 
 
 class SystemPrompt(BaseModel):
@@ -69,15 +72,16 @@ class PromptConfig(BaseModel):
         description="Maximum input context length in tokens (system + prompt + attributes + document).",
     )
     communication_format: CommunicationFormat = Field(
-        default=CommunicationFormat.deet, description="Response format to follow DEET standard or format optimised for single boolean decisions"
+        default=CommunicationFormat.deet,
+        description="Response format to follow DEET standard or format optimised for single boolean decisions",
     )
 
     @classmethod
     def from_file(cls, path: Path) -> "PromptConfig":
-        with open(path, "r") as fp:
+        with Path.open(path) as fp:
             splits = fp.read().split(50 * "-", maxsplit=1)
-            if len(splits) != 2:
-                raise RuntimeError(f"Looks like the prompt config is not split into two parts by a line with 50 dashes")
+            if len(splits) != 2:  # noqa: PLR2004
+                raise RuntimeError("Looks like the prompt config is not split into two parts by a line with 50 dashes")
             conf, prompt = splits
             data = yaml.safe_load(conf.strip())
             data.setdefault("prompt_config", {})["prompt"] = prompt.strip()
@@ -85,7 +89,8 @@ class PromptConfig(BaseModel):
 
 
 def estimate_prompt_tokens(messages: list[dict[str, str]]) -> int:
-    """Estimate the number of tokens required for a transaction.
+    """
+    Estimate the number of tokens required for a transaction.
 
     Heuristic approach informed by DEET (`deet.utils.tokenisation.count_tokens()`).
     """
@@ -96,7 +101,7 @@ def estimate_prompt_tokens(messages: list[dict[str, str]]) -> int:
 
 
 class LLM:
-    def __init__(self, config: PromptConfig):
+    def __init__(self, config: PromptConfig) -> None:
         self.config = config
         self.system_messages: list[dict[str, Any]] = [
             {
@@ -117,24 +122,7 @@ class LLM:
             ]
 
     def _call_llm(self, text: str, seed_offset: int = 0) -> tuple[str, list[dict[str, Any]], int, int, int, float]:
-        messages: list[dict[str, str]] = copy.deepcopy(self.system_messages)
-        if self.config.communication_format == CommunicationFormat.deet:
-            messages.append(
-                {
-                    "role": "user",
-                    "content": json.dumps(
-                        {"context": text, "attributes": [{"attribute_id": 0, "output_data_type": "boolean"}]},
-                        ensure_ascii=False,
-                    ),
-                },
-            )
-            schema = ResponseSchemaDEET.model_json_schema()
-        elif self.config.communication_format == CommunicationFormat.deet:
-            messages.append({"role": "user", "content": json.dumps({"record": text}, ensure_ascii=False)})
-            schema = ResponseSchema.model_json_schema()
-        else:
-            raise ValueError(f"Undefined communication format: {self.config.communication_format}")
-
+        messages, schema = self._prepare_messages(text=text)
         est_num_tokens = estimate_prompt_tokens(messages)
         if est_num_tokens > self.config.max_context_tokens:
             raise RuntimeError(f"This request likely exceeds the maximum prompt length: {est_num_tokens:,} > {self.config.max_context_tokens:,}")
@@ -151,7 +139,7 @@ class LLM:
                     "type": "json_schema",
                     "json_schema": {
                         "name": "llm_annotation_response",
-                        "schema": schema,
+                        "schema": schema.model_json_schema(),
                         "strict": True,
                     },
                 },
@@ -159,10 +147,34 @@ class LLM:
                 timeout=settings.timeout,
                 num_retries=settings.num_retries,
             )
+        response_content, num_input_tokens, num_output_tokens, num_cached_tokens = self._parse_response(response, process_seconds=process_seconds)
+        return response_content, messages, num_input_tokens, num_output_tokens, num_cached_tokens, process_seconds
 
-        num_input_tokens: int = 0
-        num_output_tokens: int = 0
-        num_cached_tokens: int = 0
+    def _prepare_messages(self, text: str) -> tuple[list[dict[str, str]], type[ResponseSchemaDEET | ResponseSchema]]:
+        messages: list[dict[str, str]] = copy.deepcopy(self.system_messages)
+
+        if self.config.communication_format == CommunicationFormat.deet:
+            messages.append(
+                {
+                    "role": "user",
+                    "content": json.dumps(
+                        {"context": text, "attributes": [{"attribute_id": 0, "output_data_type": "boolean"}]},
+                        ensure_ascii=False,
+                    ),
+                },
+            )
+            return messages, ResponseSchemaDEET
+
+        if self.config.communication_format == CommunicationFormat.optimized:
+            messages.append({"role": "user", "content": json.dumps({"record": text}, ensure_ascii=False)})
+            return messages, ResponseSchema
+
+        raise ValueError(f"Undefined communication format: {self.config.communication_format}")
+
+    def _parse_response(self, response: ModelResponse | CustomStreamWrapper, process_seconds: float) -> tuple[str, int, int, int]:
+        num_input_tokens: int = -1
+        num_output_tokens: int = -1
+        num_cached_tokens: int = -1
         if response.usage is not None:
             if hasattr(response.usage, "prompt_tokens"):
                 num_input_tokens = response.usage.prompt_tokens or 0
@@ -198,17 +210,29 @@ class LLM:
             response_content = msg.tool_calls[0].function.arguments
         else:
             raise RuntimeError(f"Unclear response! {usage_note}\n{msg}")
-
-        return response_content, messages, num_input_tokens, num_output_tokens, num_cached_tokens, process_seconds
+        return response_content, num_input_tokens, num_output_tokens, num_cached_tokens
 
     def annotate(self, text: str) -> BooleanAnnotation:
         response_content, messages, num_input_tokens, num_output_tokens, num_cached_tokens, process_seconds = self._call_llm(text)
-        response = ResponseSchema.model_validate_json(response_content)
 
-        return BooleanAnnotation(
-            scheme=self.config.scheme,
-            label=self.config.label,
-            value=response.decision,
-            score=None,
-            data={"reasoning": response.reasoning},
-        )
+        if self.config.communication_format == CommunicationFormat.deet:
+            deet_response = ResponseSchemaDEET.model_validate_json(response_content)
+            return BooleanAnnotation(
+                scheme=self.config.scheme,
+                label=self.config.label,
+                value=deet_response.attribute_0.decision,
+                score=None,
+                data={"reasoning": deet_response.attribute_0.reasoning},
+            )
+
+        if self.config.communication_format == CommunicationFormat.optimized:
+            response = ResponseSchema.model_validate_json(response_content)
+            return BooleanAnnotation(
+                scheme=self.config.scheme,
+                label=self.config.label,
+                value=response.decision,
+                score=None,
+                data={"reasoning": response.reasoning},
+            )
+
+        raise RuntimeError(f"Invalid communication format: {self.config.communication_format}")
