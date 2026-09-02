@@ -2,12 +2,14 @@
 
 import logging
 import tomllib
+from collections import OrderedDict
 from enum import StrEnum
 from functools import lru_cache
 from pathlib import Path
-from typing import Any
+from typing import Any, cast
 from uuid import UUID
 
+from destiny_sdk.visibility import Visibility
 from pydantic import Field, HttpUrl, SecretStr
 from pydantic_settings import BaseSettings, SettingsConfigDict
 
@@ -71,65 +73,65 @@ def read_toml_value(path_to_toml: str | Path, *path: str) -> str:
             if not (current_node := current_node.get(step, None)):
                 raise ValueError(f"`{steps}` not present in {path_to_toml}")
 
-        if type(current_node) is not str:
+        if current_node is None or type(current_node) is not str:
             raise ValueError(
                 f"{steps} did not lead to singular string value in {path_to_toml}",
             )
 
-        return current_node
+        return cast(str, current_node)
 
 
 class Settings(BaseSettings):
     """Settings model for polling robot."""
 
     model_config = SettingsConfigDict(
-        env_file=(".env.secret", ".env"),
+        env_file=(".env", ".env.secret.shared", ".env.secret"),
         env_file_encoding="utf-8",
         extra="ignore",
     )
 
-    robot_secret: SecretStr = Field(
-        description="Secret needed for communicating with destiny repo.",
-    )
+    # Runtime settings
+    loglevel: str | int = Field(default="INFO", description="Logging level")
+
+    # Robot identification settings
     robot_id: UUID = Field(
         description="Client id needed for communicating with destiny repository.",
     )
-
     robot_version: str = Field(
         default=read_toml_value("pyproject.toml", "project", "version"),
         pattern="[0-9]+.[0-9]+.[0-9]+",
         description="Semantic version of the robot",
     )
-
     robot_name: str = Field(
         default=read_toml_value("pyproject.toml", "project", "name"),
         pattern="([a-z]+-)+",
         description="Name of the robot",
     )
 
+    # Repository settings
     base_url: HttpUrl = Field(
         default=HttpUrl("https://api.staging.evidence-repository.org"),
         description="DESTinY repository API endpoint",
     )
-
     env: Environment = Field(
         default=Environment.STAGING,
-        description="The environment the toy robot is deployed in.",
+        description="The environment this robot is deployed in.",
     )
 
-    llm_interval_seconds: int = Field(
+    # Robot looping settings
+    interval_seconds: int = Field(
         default=30,
-        description=("How long to sleep between match requests (seconds)"),
-    )
-    classify_interval_seconds_interval_seconds: int = Field(
-        default=30,
-        description=("How long to sleep between classification batches (seconds)"),
+        description="How long to sleep between each loop",
     )
     batch_size: int = Field(
         default=10,
-        description=("The number of references to include per batch"),
+        description="The number of references to include per batch",
     )
 
+    # Robot identification and authentication settings
+    robot_secret: SecretStr = Field(
+        description="Secret needed for communicating with destiny repo.",
+    )
     keycloak_id: str | None = Field(default=None, description="keycloak client id")
     keycloak_secret: SecretStr | None = Field(
         default=None,
@@ -141,20 +143,74 @@ class Settings(BaseSettings):
     )
     keycloak_realm: str = Field(default="destiny", description="keycloak realm ")
 
-    min_abstract_length: int = Field(
+    # Miscellaneous settings
+    min_text_length: int = Field(
         default=200,
-        description=("Minimum length of abstract that we might consider for classification"),
+        description="Minimum length of title+abstract that we might consider for classification",
     )
 
-    # Provider credentials / settings (secrets redacted)
-    azure_api_key: str | None = Field(
+    # Files for search query, pre-filter model, and LLM prompts
+    search_query: Path = Field(default=Path(".configs/search-query.txt"), description="Path to file containing search query")
+    model_prefilter: Path = Field(default=Path(".configs/models/high-recall-svm.sklearn"), description="Path to serialised sklearn model")
+    prompt_high_recall: Path = Field(default=Path(".configs/prompts/high-recall.txt"), description="Path to prompt/model config for high-recall LLM")
+    prompt_balanced: Path = Field(default=Path(".configs/prompts/balanced.txt"), description="Path to prompt/model config for balanced LLM")
+    prompt_high_precision: Path = Field(default=Path(".configs/prompts/high-precision.txt"), description="Path to prompt/model config for high-precision LLM")
+
+    # Pre-filter execution settings
+    batch_size_prefilter: int = Field(
+        default=10,
+        description="Processing the full enhancement batch at once might consume too much RAM, so we will process the data in smaller batches of this size.",
+    )
+
+    # LLM provider settings
+    llm_azure_api_key: str | None = Field(
         default=None,
         description="Azure OpenAI API key if using Azure provider.",
     )
-    azure_api_base: str | None = Field(default=None, description="Base URL for azure openAI.")
-    max_context_tokens: int = Field(default=3000, description="Maximum number of context tokens to include in a single request per document.")
-    timeout: float = Field(default=60.0, description="Per-request timeout in seconds.", gt=0.0)
-    num_retries: int = Field(default=3, description="Retries on transient errors (429, 5xx, timeouts).", ge=0)
+    llm_azure_api_base: str | None = Field(default=None, description="Base URL for azure openAI.")
+    llm_max_context_tokens: int = Field(default=3000, description="Maximum number of context tokens to include in a single request per document.")
+    llm_timeout: float = Field(default=60.0, description="Per-request timeout in seconds.", gt=0.0)
+    llm_num_retries: int = Field(default=3, description="Retries on transient errors (429, 5xx, timeouts).", ge=0)
+
+    # Enhancement settings
+    enhancement_visibility: Visibility = Field(default=Visibility.PUBLIC, description="Visibility level for Enhancements")
+    set_unseen_false: bool = Field(
+        default=True,
+        description="If true, set BooleanAnnotation(value=False) for references that are not classified because of missing abstracts or chained prompts.",
+    )
+    annotation_scheme_query: str = Field(default="query:inclusion", description="Defines the value to use for BooleanAnnotation.scheme for search queries")
+    annotation_scheme_incl: str = Field(
+        default="domain:inclusion",
+        description="Defines the value to use for BooleanAnnotation.scheme for inclusion classification",
+    )
+    annotation_label_query: str = Field(default="destiny-ic1", description="Defines the value to use for BooleanAnnotation.label for search queries")
+    annotation_label_prefilter: str = Field(
+        default="destiny-ic1-prefilter",
+        description="Defines the value to use for BooleanAnnotation.label for pre-filtering",
+    )
+    annotation_label_recall: str = Field(
+        default="destiny-ic1-high-recall",
+        description="Defines the value to use for BooleanAnnotation.label for high-recall LLM decisions",
+    )
+    annotation_label_balanced: str = Field(
+        default="destiny-ic1-balanced",
+        description="Defines the value to use for BooleanAnnotation.label for balanced LLM decisions",
+    )
+    annotation_label_precision: str = Field(
+        default="destiny-ic1-high-precision",
+        description="Defines the value to use for BooleanAnnotation.label for high-precision LLM decisions",
+    )
+
+    @property
+    def prompt_configs(self) -> OrderedDict[str, Path]:
+        # OrderedDict not necessary for newer python versions, just making extra sure...
+        return OrderedDict(
+            [
+                (self.annotation_label_recall, self.prompt_high_recall),
+                (self.annotation_label_balanced, self.prompt_balanced),
+                (self.annotation_label_precision, self.prompt_high_precision),
+            ],
+        )
 
 
 @lru_cache(maxsize=1)

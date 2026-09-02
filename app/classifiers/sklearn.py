@@ -7,8 +7,6 @@ import joblib
 import numpy as np
 
 if TYPE_CHECKING:
-    from collections.abc import Callable
-
     from sklearn.pipeline import Pipeline
 
 logger = logging.getLogger(__name__)
@@ -22,18 +20,15 @@ def preprocess_text(texts: list[str]) -> list[str]:
 
 class SklearnClassifier:
     def __init__(self, path: Path) -> None:
-        source = str((path / "model.sklearn").resolve())
-        logger.info(f"Loading trained model from {source}")
+        logger.info(f"Loading trained model from {path}")
 
-        info = joblib.load(source)
+        info = joblib.load(path)
         info.pop("classes_", None)  # Remove in case it's set, so the remaining info is "clean" to use in `pipeline(**info)`
         model = info.pop("model_")
-        pipeline = info.pop("pipeline_")
         threshold = info.pop("threshold_", DEFAULT_THRESHOLD)
 
         self.model_: Pipeline = model
         self.threshold_: float = threshold
-        self.pipeline_: Callable[..., Pipeline] = pipeline
         self.params_: dict[str, Any] = info
 
     def predict_proba(self, X: list[str]) -> np.ndarray:  # noqa: N803

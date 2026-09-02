@@ -13,41 +13,51 @@ from .repository import Repository
 if TYPE_CHECKING:
     from types import FrameType
 
+    from destiny_sdk.robots import RobotAutomationIn
+
 
 class Runner(ABC):
     """Abstract runner class with main loop."""
 
-    def __init__(self, name: str, db_debug: bool = False, loglevel: str | int = "INFO", loop_interval_seconds: int = 0) -> None:
+    def __init__(self, name: str) -> None:
         """Initialise runner."""
         self.settings = get_settings()
 
-        logger = get_logger("inclusion-robot", init_logging=True, base_level=loglevel)
+        logger = get_logger("inclusion-robot", init_logging=True, base_level=self.settings.loglevel)
         self.logger = logger.getChild(name)
         self.loop_logger = self.logger.getChild("loop")
-        self.loop_interval_seconds = loop_interval_seconds
         self.total_entries_processed = 0
 
         self.repository = Repository(settings=self.settings, logger=logger.getChild("repository"))
         self.shutdown_event = asyncio.Event()
 
     @abstractmethod
-    async def _loop_task(self) -> None:
-        """Perform iteration of runner loop."""
+    def _automation_query(self) -> "RobotAutomationIn":
+        """
+        Robot automation query this runner is listening for.
+
+        Check the documentation for more information:
+        https://destiny-evidence.github.io/destiny-repository/procedures/robot-automation.html#query
+        """
         raise NotImplementedError
 
     @abstractmethod
-    async def _register_listener(self) -> None:
+    async def _loop_task(self) -> None:
         """Perform iteration of runner loop."""
         raise NotImplementedError
 
     async def _main_loop(self) -> None:
         """Run main loop."""
         loop_logger = self.logger.getChild("loop")
+
+        # On startup, run first loop right away.
+        await self._loop_task()
+
         while True:
             try:
-                if self.loop_interval_seconds > 0:
+                if self.settings.interval_seconds > 0:
                     # Sleep for graceful API use
-                    await asyncio.sleep(self.loop_interval_seconds)
+                    await asyncio.sleep(self.settings.interval_seconds)
 
                 # Perform unit of work
                 await self._loop_task()
@@ -63,7 +73,7 @@ class Runner(ABC):
     async def start(self) -> None:
         """Robot's core working method."""
         self.logger.info(
-            f"Initialising main loop for {self.settings.robot_name} with a {self.loop_interval_seconds}s polling interval "
+            f"Initialising main loop for {self.settings.robot_name} with a {self.settings.interval_seconds}s polling interval "
             f"and default batch size {self.settings.batch_size:,}.",
         )
 

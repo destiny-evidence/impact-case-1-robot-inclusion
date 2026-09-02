@@ -1,8 +1,6 @@
-"""Entry point script for running the toy robot in polling mode."""
+"""Entry point script for running the toy robot."""
 
-import typer
-
-from app import main
+from app import run
 
 if __name__ == "__main__":
-    typer.run(main)
+    run()

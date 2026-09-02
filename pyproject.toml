@@ -36,6 +36,12 @@ readme = "README.md"
 requires-python = ">=3.14"
 version = "0.1.0"
 
+[project.scripts]
+robot = "app:run"
+
+[tool.hatch.build.targets.wheel]
+packages = ["app"] # new: tell hatchling where the code is
+
 [tool.mypy]
 # for strict mypy: (this is the tricky one :-))
 disallow_untyped_defs = true
@@ -76,6 +82,7 @@ lint.ignore = [
     "FIX002", # implicit trust that TODOs are not trivial, or else they would be fixed
     "G004", # Logging statement uses f-string
     "ISC001", # simplify implicit str concatenation (ruff-format recommended)
+    "N806", # Variable `..` in function should be lowercase
     "TRY003", # Avoid specifying long messages outside the exception class
     "TRY400", # Use `logging.exception` instead of `logging.error
     "TRY401", # Redundant exception object included in `logging.exception` call
@@ -100,7 +107,7 @@ overrides."tool.coverage.paths.source".inline_arrays = false
 [tool.uv]
 exclude-newer = "P5D"
 exclude-newer-package = {destiny-sdk = false}
-package = false
+package = true
 
 [tool.uv.sources]
 data-extraction-evaluation-toolkit = {git = "https://github.com/destiny-evidence/data-extraction-evaluation-toolkit.git", tag = "v0.3.0-dev.2"}

@@ -2,42 +2,43 @@
 
 import asyncio
 from enum import Enum
-from typing import TYPE_CHECKING, Annotated
 
-import typer
-
-from .classify import EnhancementRunner as ClassificationRunner
-from .util import get_settings
-
-if TYPE_CHECKING:
-    from .util import Runner
+from .robots import LLMRobot, PrefilterRobot, QueryRobot, Robot
 
 
 class RunnerTask(str, Enum):
     """Enum for types of runners."""
 
-    classify = "classify"
-    match = "match"
+    query = "query"
+    prefilter = "prefilter"
+    llm = "llm"
 
 
 def main(
     task: RunnerTask,
-    loglevel: Annotated[str, typer.Option(help="Basic loglevel for base-logger")] = "INFO",
-    debug_database: Annotated[bool, typer.Option(help="Verbose database logs from sqlalchemy")] = False,
 ) -> None:
     """Start runner for selected `task`."""
-    settings = get_settings()
-
-    SelectedRunner: type[Runner]  # noqa: N806
-    loop_interval: int
-    if task == RunnerTask.classify:
-        SelectedRunner = ClassificationRunner  # noqa: N806
-        loop_interval = settings.llm_interval_seconds
+    RobotRunner: Robot
+    if task == RunnerTask.query:
+        RobotRunner = QueryRobot
+    elif task == RunnerTask.prefilter:
+        RobotRunner = PrefilterRobot
+    elif task == RunnerTask.llm:
+        RobotRunner = LLMRobot
     else:
         raise ValueError(f"Unknown runner type: {task}")
 
     async def _main() -> None:
-        runner = SelectedRunner(name=task.value, loglevel=loglevel, db_debug=debug_database, loop_interval_seconds=loop_interval)
+        runner = RobotRunner(name=task.value)
         await runner.start()
 
     asyncio.run(_main())
+
+
+def run() -> None:
+    import typer
+
+    typer.run(main)
+
+
+__all__ = ["LLMRobot", "PrefilterRobot", "QueryRobot", "Robot", "RunnerTask", "main", "run"]

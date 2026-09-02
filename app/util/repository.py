@@ -1,5 +1,7 @@
 """Utility class for interacting with the repository."""
 
+import base64
+from collections.abc import Callable
 from typing import TYPE_CHECKING
 from uuid import UUID
 
@@ -23,6 +25,55 @@ if TYPE_CHECKING:
     from .config import Settings
 
 HTTP_TIMEOUT_SECONDS = 600
+
+
+class BatchedResultWriter:
+    def __init__(self, batch_info: RobotEnhancementBatch, client: httpx.AsyncClient, finalise_callback: Callable[[UUID], None]) -> None:
+        self.batch_info = batch_info
+        self.target_url = str(batch_info.result_storage_url)
+        self.block_ids: list[str] = []
+        self.client = client
+        self._finalize_callback = finalise_callback
+        self.num_enhancements = 0
+
+    @property
+    def num_batches(self) -> int:
+        return len(self.block_ids)
+
+    async def submit_batch(self, enhancements: list[Enhancement]) -> int:
+        index = self.num_batches
+        block_id = base64.b64encode(f"{index:08d}".encode("ascii")).decode("ascii")
+        self.block_ids.append(block_id)
+        num_enhancements = 0
+        file_content = b""
+        for enhancement in enhancements:
+            file_content += (enhancement.to_jsonl() + "\n").encode("utf-8")
+            num_enhancements += 1
+
+        url = httpx.URL(self.target_url).copy_merge_params({"comp": "block", "blockid": block_id})
+        response = await self.client.put(url, content=file_content, headers={"Content-Length": str(len(file_content))})
+        response.raise_for_status()
+        self.num_enhancements += num_enhancements
+        return num_enhancements
+
+    async def finalise(self) -> None:
+        """Commit the staged blocks, in order, as the blob contents."""
+        latest = "".join(f"<Latest>{block_id}</Latest>" for block_id in self.block_ids)
+        body = ('<?xml version="1.0" encoding="utf-8"?>' f"<BlockList>{latest}</BlockList>").encode()
+
+        url = httpx.URL(self.target_url).copy_merge_params({"comp": "blocklist"})
+        response = await self.client.put(
+            url,
+            content=body,
+            headers={
+                "Content-Type": "application/xml",
+                "x-ms-blob-content-type": "application/jsonl",
+                "Content-Length": str(len(body)),
+            },
+        )
+        response.raise_for_status()
+
+        self._finalize_callback(self.batch_info.id)
 
 
 class Repository:
@@ -63,7 +114,7 @@ class Repository:
             json=EnhancementRequestIn(
                 robot_id=self.settings.robot_id,
                 reference_ids=destiny_ids,
-                # source=self.settings.repository_provenance, # FIXME
+                # source=
             ).model_dump(mode="json"),
         )
         response.raise_for_status()
@@ -89,6 +140,13 @@ class Repository:
             return None, None
 
         return batch_info, references
+
+    def get_batched_enhancement_writer(self, batch_info: RobotEnhancementBatch) -> BatchedResultWriter:
+        return BatchedResultWriter(
+            batch_info=batch_info,
+            client=self.blob_client,
+            finalise_callback=self._finalise_enhancement_batch,
+        )
 
     async def submit_enhancements(self, batch_info: RobotEnhancementBatch, enhancements: list[Enhancement]) -> None:
         """Submit enhancements to repository."""

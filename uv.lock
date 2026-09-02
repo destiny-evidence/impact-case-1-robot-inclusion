@@ -777,7 +777,7 @@ dependencies = [
     {name = "typer"},
 ]
 name = "impact-case-1-robot-inclusion"
-source = {virtual = "."}
+source = {editable = "."}
 version = "0.1.0"
 
 [package.dev-dependencies]

@@ -14,6 +14,7 @@ from pydantic import BaseModel, ConfigDict, Field
 from app.util import get_settings, measure_runtime
 
 settings = get_settings()
+CONFIG_DIVISION = 50 * "!"
 
 
 class ResponseAttribute(BaseModel):
@@ -47,13 +48,6 @@ class SystemPrompt(BaseModel):
 class PromptConfig(BaseModel):
     model_config = ConfigDict(extra="ignore")
 
-    scheme: str = Field(
-        description="An identifier for the scheme of annotation",
-        examples=["openalex:topic", "pubmed:mesh"],
-        pattern=r"^[^/]+$",  # No slashes allowed
-    )
-    label: str = Field(description="A high level label for this annotation like the name of the topic")
-
     model: str = Field(default="gpt-4o-mini", description="LLM model identifier used for completions.")
     prompt_config: SystemPrompt = Field(description="Prompt configuration")
 
@@ -68,20 +62,24 @@ class PromptConfig(BaseModel):
         description="Maximum number of tokens to generate (Leave blank for provider default).",
     )
     max_context_tokens: int = Field(
-        default=settings.max_context_tokens,
+        default=settings.llm_max_context_tokens,
         description="Maximum input context length in tokens (system + prompt + attributes + document).",
     )
     communication_format: CommunicationFormat = Field(
         default=CommunicationFormat.deet,
         description="Response format to follow DEET standard or format optimised for single boolean decisions",
     )
+    votes: int = Field(
+        default=1,
+        description="When >1, will repeatedly run prompt and return majority decision.",
+    )
 
     @classmethod
     def from_file(cls, path: Path) -> "PromptConfig":
         with Path.open(path) as fp:
-            splits = fp.read().split(50 * "-", maxsplit=1)
+            splits = fp.read().split(CONFIG_DIVISION, maxsplit=1)
             if len(splits) != 2:  # noqa: PLR2004
-                raise RuntimeError("Looks like the prompt config is not split into two parts by a line with 50 dashes")
+                raise RuntimeError("Looks like the prompt config is not split into two parts by the correct division")
             conf, prompt = splits
             data = yaml.safe_load(conf.strip())
             data.setdefault("prompt_config", {})["prompt"] = prompt.strip()
@@ -100,9 +98,21 @@ def estimate_prompt_tokens(messages: list[dict[str, str]]) -> int:
     return int(num / 4)
 
 
-class LLM:
-    def __init__(self, config: PromptConfig) -> None:
+class LLMClassifier:
+    """
+    LiteLLM wrapper to imitate the flow of DEET.
+
+    Entrypoint for DEET usually is `deet.extractors.llm_data_extractor.LLMDataExtractor.extract_from_document()`:
+    https://github.com/destiny-evidence/data-extraction-evaluation-toolkit/blob/main/deet/extractors/llm_data_extractor.py#L300
+
+    The two communication_format modes allow to switch between a version that is optimised for a single boolean decision
+    or an exact replication of the DEET protocol.
+    """
+
+    def __init__(self, config: PromptConfig, scheme: str, label: str) -> None:
         self.config = config
+        self.scheme = scheme
+        self.label = label
         self.system_messages: list[dict[str, Any]] = [
             {
                 "role": "system",
@@ -130,8 +140,8 @@ class LLM:
         with measure_runtime() as process_seconds:
             response = prompt_llm(
                 model=self.config.model,
-                api_key=settings.azure_api_key,
-                api_base=settings.azure_api_base,
+                api_key=settings.llm_azure_api_key,
+                api_base=settings.llm_azure_api_base,
                 messages=messages,
                 seed=self.config.seed + seed_offset if self.config.seed is not None else None,
                 temperature=self.config.temperature,
@@ -144,8 +154,8 @@ class LLM:
                     },
                 },
                 max_tokens=self.config.max_tokens,
-                timeout=settings.timeout,
-                num_retries=settings.num_retries,
+                timeout=settings.llm_timeout,
+                num_retries=settings.llm_num_retries,
             )
         response_content, num_input_tokens, num_output_tokens, num_cached_tokens = self._parse_response(response, process_seconds=process_seconds)
         return response_content, messages, num_input_tokens, num_output_tokens, num_cached_tokens, process_seconds
@@ -212,14 +222,12 @@ class LLM:
             raise RuntimeError(f"Unclear response! {usage_note}\n{msg}")
         return response_content, num_input_tokens, num_output_tokens, num_cached_tokens
 
-    def annotate(self, text: str) -> BooleanAnnotation:
-        response_content, messages, num_input_tokens, num_output_tokens, num_cached_tokens, process_seconds = self._call_llm(text)
-
+    def _convert_response(self, response_content: str) -> BooleanAnnotation:
         if self.config.communication_format == CommunicationFormat.deet:
             deet_response = ResponseSchemaDEET.model_validate_json(response_content)
             return BooleanAnnotation(
-                scheme=self.config.scheme,
-                label=self.config.label,
+                scheme=self.scheme,
+                label=self.label,
                 value=deet_response.attribute_0.decision,
                 score=None,
                 data={"reasoning": deet_response.attribute_0.reasoning},
@@ -228,11 +236,38 @@ class LLM:
         if self.config.communication_format == CommunicationFormat.optimized:
             response = ResponseSchema.model_validate_json(response_content)
             return BooleanAnnotation(
-                scheme=self.config.scheme,
-                label=self.config.label,
+                scheme=self.scheme,
+                label=self.label,
                 value=response.decision,
                 score=None,
                 data={"reasoning": response.reasoning},
             )
 
         raise RuntimeError(f"Invalid communication format: {self.config.communication_format}")
+
+    def annotate(self, text: str) -> BooleanAnnotation:
+        num_majority = self.config.votes // 2 + 1
+
+        annotations: list[BooleanAnnotation] = []
+        num_incl = 0
+        num_excl = 0
+        for _vote_num in range(self.config.votes):
+            response_content, messages, num_input_tokens, num_output_tokens, num_cached_tokens, process_seconds = self._call_llm(text)
+            annotation = self._convert_response(response_content)
+            annotations.append(annotation)
+            num_incl += int(annotation.value)
+            num_excl += int(not annotation.value)
+
+            # Check if we already found a majority so we can stop early
+            if num_incl >= num_majority or num_excl >= num_majority:
+                break
+
+        return BooleanAnnotation(
+            scheme=self.scheme,
+            label=self.label,
+            value=num_incl >= num_majority,
+            score=num_incl / self.config.votes,
+            data={
+                "votes": [{"value": annotation.value, "reasoning": annotation.data.get("reasoning")} for annotation in annotations],
+            },
+        )
