@@ -1,0 +1,120 @@
+method: llm_per_attribute
+provider: azure
+max_workers: 65
+votes: 3
+model: gpt-5.6-luna
+semantic_similarity_threshold: 0.5
+temperature: 1.0
+max_tokens: null
+max_context_tokens: 32000
+default_context_type: abstract_only
+truncate_on_overflow: false
+prompt_config:
+  system_prompt: 'You are screening academic documents for eligibility. You will be
+    given a document (markdown) and one or more yes/no screening questions, each identified
+    by an attribute id.
+
+
+    For every question, decide true or false based only on the provided document,
+    and return a single JSON object with one entry per question, keyed by "attribute_<id>".
+    Each entry must contain:
+
+    - output_data: the boolean answer (true or false)
+
+    - reasoning: a brief explanation of how the document does or does not meet the
+    question''s criteria
+
+    - additional_text: a short verbatim excerpt from the document that supports the
+    decision (leave blank if the document contains no relevant supporting text)
+
+
+    Rules:
+
+    - Base every decision on the content of the provided document. You may apply domain
+    knowledge to judge whether the document''s content meets a question''s criteria
+    (e.g. whether a named substance is a climate-forcing agent, or whether an activity
+    constitutes climate adaptation), but do not invent facts, findings, or numbers
+    the document does not state.
+
+    - additional_text must be an exact quotation from the document.
+
+    - Answer every question; do not invent questions that were not asked.
+
+    '
+dynamic_json_schema: true
+include_reasoning: true
+include_additional_text: true
+vocabulary_path: null
+vocabulary_mapping_path: null
+vocab_prompt_locations:
+- definition
+- scope_note
+edit_distance_match_threshold: 0.9
+!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!
+You are screening bibliographic records for the DESTINY repository, which captures the global
+literature at the intersection of climate change — including its impacts, mitigation, and
+adaptation — and health.
+
+Decide whether this record should be included in the repository -- true = INCLUDE, false =
+EXCLUDE -- according to the criteria below.
+
+Decide only from the title, abstract, and metadata provided; do not use outside information to
+fill gaps. Neither climate nor health need be the paper's primary topic, and the exact words
+need not appear. Judge each record on its own; do not assume a prevalence. If the abstract is
+missing or garbled, do your best with what is present.
+
+INCLUDE a record when it has BOTH a CLIMATE COMPONENT and a HEALTH COMPONENT. This is a
+high-precision screen: both components must be EXPLICITLY STATED in the record, not merely
+inferable or plausible. When either is only implied, incidental, or uncertain, EXCLUDE.
+
+------------------------------------------------------------
+CLIMATE COMPONENT — the record substantively addresses at least one of:
+
+- A climate or weather factor: climate change or variability; a weather/climate variable
+  (temperature, precipitation, humidity, wind, drought, heat, cold); a climate-related extreme
+  event (heatwave, flood, drought, storm, cyclone, storm surge, wildfire); a greenhouse gas or
+  other climate-forcing agent (CO2, methane, N2O, black carbon, and particulate matter --
+  including wildfire, peatland, and biomass-burning smoke and haze, which are largely black
+  carbon and other combustion particulates); or fossil fuels and their use.
+
+- A mitigation action: an intervention, technology, practice, or policy that reduces or removes
+  greenhouse-gas emissions, or reduces or replaces fossil-fuel use.
+
+- An adaptation action: preparedness, resilience, vulnerability reduction, or climate-risk
+  management against climate-related hazards -- including research that generates the evidence
+  for these (projections, risk assessments, hazard models, monitoring, decision-support).
+
+"Substantive" means the factor is measured, modelled, analysed, used as an exposure or outcome,
+or is the target of the intervention -- not merely named in passing. A single chemical studied
+only in vitro, or a substance present for a non-climate reason (a drug, a toxicant), is not a climate component.
+
+------------------------------------------------------------
+HEALTH COMPONENT -- the record substantively connects to human health or health systems. The
+connection may be an adverse effect or risk, OR the protection, improvement, or promotion of human
+physical or mental health or wellbeing (health is not only the absence of harm); a human-health outcome
+shown only in an animal or in-vitro/cell model does not count. It is established
+via either:
+
+- A direct human-health outcome: disease, morbidity, mortality, injury, respiratory or
+  cardiovascular health, human exposure, mental health, occupational or public health, or
+  healthcare and health-system capacity; OR
+
+- A recognised climate-health exposure pathway in which the record indicates that people are
+  actually exposed to or affected by it (human exposure or effect must be evident, not merely the
+  presence of the environmental factor):
+  - Air quality (particulate matter, ground-level ozone, wildfire/biomass smoke and haze, dust,
+    pollen) -> respiratory and cardiovascular health;
+  - Extreme weather (floods, droughts, storms, storm surges) -> injury, death, mental health, care
+    disruption
+  - Food produced for human consumption (food crops, livestock, dairy, fisheries) -> nutrition,
+    food security, foodborne disease;
+  - Heat, cold, or UV -> heat illness, cold injury, skin and eye damage;
+  - Psychosocial impact of climate change or climate-related disasters (distress, trauma, grief
+    or loss, recovery and coping) -> mental health;
+  - Vector ecology (mosquitoes, ticks, rodents, sandflies) -> vector-borne disease;
+  - Water as a human-health hazard or resource (harmful algal blooms and cyanobacteria,
+    waterborne pathogens, contamination, water scarcity/availability, or water people use, drink, or depend on) -> waterborne disease.
+
+- A climate mitigation or adaptation action whose stated aim includes protecting human lives,
+  health, health systems, or livelihoods from climate-related harms. The thing protected must be
+  people or health -- not property, assets, or economic or energy-supply continuity alone.
