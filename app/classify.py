@@ -28,6 +28,5 @@ class EnhancementRunner(Runner):
 
         self.total_entries_processed += len(cache_entries)
         self.loop_logger.info(
-            f"[Total: {self.total_entries_processed:,} entries] "
-            f"Submitted {len(cache_entries):,} enhancements.",
+            f"[Total: {self.total_entries_processed:,} entries] Submitted {len(cache_entries):,} enhancements.",
         )

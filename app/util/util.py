@@ -15,7 +15,7 @@ def get_abstract(reference: Reference) -> str | None:
 
 
 @contextmanager
-def measure_runtime() -> Generator[float , None, None]:
+def measure_runtime() -> Generator[float, None, None]:
     """Yield an ``ElapsedSeconds`` model with ``seconds`` set on context exit."""
     elapsed: float = 0
     start = time.perf_counter()

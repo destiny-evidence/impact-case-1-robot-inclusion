@@ -157,6 +157,7 @@ class Settings(BaseSettings):
     timeout: float = Field(default=60.0, description="Per-request timeout in seconds.", gt=0.0)
     num_retries: int = Field(default=3, description="Retries on transient errors (429, 5xx, timeouts).", ge=0)
 
+
 @lru_cache(maxsize=1)
 def get_settings() -> Settings:
     """Get a cached settings object."""

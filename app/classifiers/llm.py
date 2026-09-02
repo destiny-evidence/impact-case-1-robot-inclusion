@@ -31,18 +31,18 @@ class ResponseSchema(BaseModel):
 
 
 class CommunicationFormat(str, Enum):
-    deet = 'deet'
-    improved = 'improved'
+    deet = "deet"
+    improved = "improved"
 
 
 class SystemPrompt(BaseModel):
-    model_config = ConfigDict(extra='ignore')
+    model_config = ConfigDict(extra="ignore")
     system_prompt: str = Field(description="System prompt that defines the task and role")
     prompt: str = Field(description="Prompt for the inclusion rule")
 
 
 class PromptConfig(BaseModel):
-    model_config = ConfigDict(extra='ignore')
+    model_config = ConfigDict(extra="ignore")
 
     scheme: str = Field(
         description="An identifier for the scheme of annotation",
@@ -68,14 +68,16 @@ class PromptConfig(BaseModel):
         default=settings.max_context_tokens,
         description="Maximum input context length in tokens (system + prompt + attributes + document).",
     )
-    communication_format: CommunicationFormat = Field(default=CommunicationFormat.deet, description="Response format to follow DEET standard or format optimised for single boolean decisions")
+    communication_format: CommunicationFormat = Field(
+        default=CommunicationFormat.deet, description="Response format to follow DEET standard or format optimised for single boolean decisions"
+    )
 
     @classmethod
-    def from_file(cls, path: Path) -> 'PromptConfig':
-        with open(path, 'r') as fp:
-            splits = fp.read().split(50 * '-', maxsplit=1)
+    def from_file(cls, path: Path) -> "PromptConfig":
+        with open(path, "r") as fp:
+            splits = fp.read().split(50 * "-", maxsplit=1)
             if len(splits) != 2:
-                raise RuntimeError(f'Looks like the prompt config is not split into two parts by a line with 50 dashes')
+                raise RuntimeError(f"Looks like the prompt config is not split into two parts by a line with 50 dashes")
             conf, prompt = splits
             data = yaml.safe_load(conf.strip())
             data.setdefault("prompt_config", {})["prompt"] = prompt.strip()
@@ -89,51 +91,53 @@ def estimate_prompt_tokens(messages: list[dict[str, str]]) -> int:
     """
     num = 0
     for message in messages:
-        num += len(message['content'])
+        num += len(message["content"])
     return int(num / 4)
 
 
 class LLM:
     def __init__(self, config: PromptConfig):
         self.config = config
-        self.system_messages: list[dict[str, Any]] = [{
-            "role": "system",
-            "content": f'{self.config.prompt_config.system_prompt}\n\n## Inclusion criteria\n{self.config.prompt_config.prompt}',
-        }]
+        self.system_messages: list[dict[str, Any]] = [
+            {
+                "role": "system",
+                "content": f"{self.config.prompt_config.system_prompt}\n\n## Inclusion criteria\n{self.config.prompt_config.prompt}",
+            }
+        ]
 
         # OpenAI and Azure OpenAI cache automatically; Anthropic-family models need a breakpoint.
         if config.model.startswith(("anthropic/", "bedrock/", "vertex_ai/claude")):
             last = self.system_messages[-1]
-            last["content"] = [{
-                "type": "text",
-                "text": last["content"],
-                "cache_control": {"type": "ephemeral"},
-            }]
+            last["content"] = [
+                {
+                    "type": "text",
+                    "text": last["content"],
+                    "cache_control": {"type": "ephemeral"},
+                }
+            ]
 
     def _call_llm(self, text: str, seed_offset: int = 0) -> tuple[str, list[dict[str, Any]], int, int, int, float]:
         messages: list[dict[str, str]] = copy.deepcopy(self.system_messages)
         if self.config.communication_format == CommunicationFormat.deet:
             messages.append(
-                {"role": "user", "content": json.dumps(
-                    {
-                        "context": text,
-                        "attributes": [{
-                            "attribute_id": 0,
-                            "output_data_type": "boolean"
-                        }]
-                    }, ensure_ascii=False,
-                )},
+                {
+                    "role": "user",
+                    "content": json.dumps(
+                        {"context": text, "attributes": [{"attribute_id": 0, "output_data_type": "boolean"}]},
+                        ensure_ascii=False,
+                    ),
+                },
             )
             schema = ResponseSchemaDEET.model_json_schema()
         elif self.config.communication_format == CommunicationFormat.deet:
             messages.append({"role": "user", "content": json.dumps({"record": text}, ensure_ascii=False)})
             schema = ResponseSchema.model_json_schema()
         else:
-            raise ValueError(f'Undefined communication format: {self.config.communication_format}')
+            raise ValueError(f"Undefined communication format: {self.config.communication_format}")
 
         est_num_tokens = estimate_prompt_tokens(messages)
         if est_num_tokens > self.config.max_context_tokens:
-            raise RuntimeError(f'This request likely exceeds the maximum prompt length: {est_num_tokens:,} > {self.config.max_context_tokens:,}')
+            raise RuntimeError(f"This request likely exceeds the maximum prompt length: {est_num_tokens:,} > {self.config.max_context_tokens:,}")
 
         with measure_runtime() as process_seconds:
             response = prompt_llm(
@@ -171,24 +175,21 @@ class LLM:
         msg = choice.message
         finish_reason = getattr(choice, "finish_reason", None)
 
-        usage_note = (
-            f'{num_input_tokens:,} input tokens, {num_output_tokens:,} output tokens, '
-            f'{process_seconds} seconds'
-        )
+        usage_note = f"{num_input_tokens:,} input tokens, {num_output_tokens:,} output tokens, {process_seconds} seconds"
 
         refusal = getattr(msg, "refusal", None)
         if refusal:
-            raise RuntimeError(f'Model refused to answer ({usage_note}): {refusal}')
+            raise RuntimeError(f"Model refused to answer ({usage_note}): {refusal}")
 
         if finish_reason == "length":
             raise RuntimeError(
-                f'Response truncated at the token limit '
-                f'(max_tokens={self.config.max_tokens}); {usage_note}. '
-                f'Raise max_tokens or shorten the requested reasoning.',
+                f"Response truncated at the token limit "
+                f"(max_tokens={self.config.max_tokens}); {usage_note}. "
+                f"Raise max_tokens or shorten the requested reasoning.",
             )
 
         if finish_reason == "content_filter":
-            raise RuntimeError(f'Response blocked by the content filter ({usage_note}).')
+            raise RuntimeError(f"Response blocked by the content filter ({usage_note}).")
 
         response_content: str
         if getattr(msg, "content", None) is not None:
@@ -196,7 +197,7 @@ class LLM:
         elif getattr(msg, "tool_calls", None):
             response_content = msg.tool_calls[0].function.arguments
         else:
-            raise RuntimeError(f'Unclear response! {usage_note}\n{msg}')
+            raise RuntimeError(f"Unclear response! {usage_note}\n{msg}")
 
         return response_content, messages, num_input_tokens, num_output_tokens, num_cached_tokens, process_seconds
 
@@ -209,5 +210,5 @@ class LLM:
             label=self.config.label,
             value=response.decision,
             score=None,
-            data={'reasoning': response.reasoning},
+            data={"reasoning": response.reasoning},
         )

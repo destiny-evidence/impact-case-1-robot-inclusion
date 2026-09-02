@@ -9,6 +9,7 @@ from destiny_sdk.enhancements import (
     AbstractContentEnhancement,
     AbstractProcessType,
     Enhancement,
+    BibliographicMetadataEnhancement,
 )
 from destiny_sdk.identifiers import (
     ExternalIdentifierType,
@@ -23,7 +24,6 @@ from destiny_sdk.robots import (
 )
 from destiny_sdk.visibility import Visibility
 from uuid import UUID
-from .types import Record, flatten_reference
 
 if TYPE_CHECKING:
     import logging
@@ -189,3 +189,20 @@ class Repository:
                 error=None,
             ),
         )
+
+
+def get_title_abstract_from_reference(reference: Reference) -> tuple[str | None, str | None]:
+    if reference.enhancements is None:
+        return None, None
+    title: str | None = None
+    abstract: str | None = None
+    for enhancement in reference.enhancements:
+        content = enhancement.content
+
+        if isinstance(content, BibliographicMetadataEnhancement):
+            title = content.title
+
+        elif isinstance(content, AbstractContentEnhancement):
+            abstract = content.abstract
+
+    return title, abstract
