@@ -132,17 +132,6 @@ class Settings(BaseSettings):
     robot_secret: SecretStr = Field(
         description="Secret needed for communicating with destiny repo.",
     )
-    keycloak_id: str | None = Field(default=None, description="keycloak client id")
-    keycloak_secret: SecretStr | None = Field(
-        default=None,
-        description="keycloak client secret",
-    )
-    keycloak_url: str = Field(
-        default="https://auth.evidence-repository.org/",
-        description="keycloak authentication url",
-    )
-    keycloak_realm: str = Field(default="destiny", description="keycloak realm ")
-
     # Miscellaneous settings
     min_text_length: int = Field(
         default=200,
