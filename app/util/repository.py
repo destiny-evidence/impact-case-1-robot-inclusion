@@ -58,7 +58,7 @@ class BatchedResultWriter:
     async def finalise(self) -> None:
         """Commit the staged blocks, in order, as the blob contents."""
         latest = "".join(f"<Latest>{block_id}</Latest>" for block_id in self.block_ids)
-        body = ('<?xml version="1.0" encoding="utf-8"?>' f"<BlockList>{latest}</BlockList>").encode()
+        body = (f'<?xml version="1.0" encoding="utf-8"?><BlockList>{latest}</BlockList>').encode()
 
         url = httpx.URL(self.target_url).copy_merge_params({"comp": "blocklist"})
         response = await self.client.put(

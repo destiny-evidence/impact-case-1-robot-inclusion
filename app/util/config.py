@@ -42,20 +42,20 @@ def get_logger(
 
 class Environment(StrEnum):
     """
-    Environment that the toy robot is running in.
-
-    As this robot is for demo purposes only, we do not accept `production` as a value
+    Environment that therobot is running in.
 
     **Allowed values**:
     - `local`: The robot is running locally
     - `development`: The robot is running in development
     - `staging`: The robot is running in staging
+    - `production`: The robot is running in production
     - `test`: The robot is running as a test fixture for the repository
     """
 
     LOCAL = "local"
     DEVELOPMENT = "development"
     STAGING = "staging"
+    PRODUCTION = "production"
     TEST = "test"
 
 
@@ -78,7 +78,7 @@ def read_toml_value(path_to_toml: str | Path, *path: str) -> str:
                 f"{steps} did not lead to singular string value in {path_to_toml}",
             )
 
-        return cast(str, current_node)
+        return cast("str", current_node)
 
 
 class Settings(BaseSettings):
@@ -167,26 +167,26 @@ class Settings(BaseSettings):
         default=True,
         description="If true, set BooleanAnnotation(value=False) for references that are not classified because of missing abstracts or chained prompts.",
     )
-    annotation_scheme_query: str = Field(default="query:inclusion", description="Defines the value to use for BooleanAnnotation.scheme for search queries")
+    annotation_scheme_query: str = Field(default="query-inclusion", description="Defines the value to use for BooleanAnnotation.scheme for search queries")
     annotation_scheme_incl: str = Field(
-        default="domain:inclusion",
+        default="domain-inclusion",
         description="Defines the value to use for BooleanAnnotation.scheme for inclusion classification",
     )
-    annotation_label_query: str = Field(default="destiny-ic1", description="Defines the value to use for BooleanAnnotation.label for search queries")
+    annotation_label_query: str = Field(default="destiny", description="Defines the value to use for BooleanAnnotation.label for search queries")
     annotation_label_prefilter: str = Field(
-        default="destiny-ic1-prefilter",
+        default="destiny-prefilter",
         description="Defines the value to use for BooleanAnnotation.label for pre-filtering",
     )
     annotation_label_recall: str = Field(
-        default="destiny-ic1-high-recall",
+        default="destiny-high-recall",
         description="Defines the value to use for BooleanAnnotation.label for high-recall LLM decisions",
     )
     annotation_label_balanced: str = Field(
-        default="destiny-ic1-balanced",
+        default="destiny-balanced",
         description="Defines the value to use for BooleanAnnotation.label for balanced LLM decisions",
     )
     annotation_label_precision: str = Field(
-        default="destiny-ic1-high-precision",
+        default="destiny-high-precision",
         description="Defines the value to use for BooleanAnnotation.label for high-precision LLM decisions",
     )
 
