@@ -19,8 +19,8 @@ CONFIG_DIVISION = 50 * "!"
 
 class ResponseAttribute(BaseModel):
     model_config = ConfigDict(extra="forbid")
-    reasoning: Annotated[str, Field(..., description="Reasoning or explanation for the annotation decision")]
     decision: Annotated[bool, Field(..., description="The LLM's annotation for this attribute.")]
+    reasoning: Annotated[str, Field(..., description="Reasoning or explanation for the annotation decision")]
 
 
 class ResponseSchemaDEET(BaseModel):
@@ -30,8 +30,8 @@ class ResponseSchemaDEET(BaseModel):
 
 class ResponseSchema(BaseModel):
     model_config = ConfigDict(extra="forbid")
-    reasoning: str = Field(..., description="Step-by-step assessment against the criterion.")
     decision: bool = Field(..., description="Final annotation.")
+    reasoning: str = Field(..., description="Step-by-step assessment against the criterion.")
 
 
 class CommunicationFormat(str, Enum):
@@ -176,7 +176,7 @@ class LLMClassifier:
             return messages, ResponseSchemaDEET
 
         if self.config.communication_format == CommunicationFormat.optimized:
-            messages.append({"role": "user", "content": json.dumps({"record": text}, ensure_ascii=False)})
+            messages.append({"role": "user", "content": text})
             return messages, ResponseSchema
 
         raise ValueError(f"Undefined communication format: {self.config.communication_format}")

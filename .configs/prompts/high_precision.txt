@@ -1,3 +1,4 @@
+communication_format: optimized
 method: llm_per_attribute
 provider: azure
 max_workers: 65
