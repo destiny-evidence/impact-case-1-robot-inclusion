@@ -1,6 +1,25 @@
 # Lets the deploy workflow exchange a GitHub OIDC token for an Azure one, so
 # there are no long-lived Azure credentials in GitHub.
 
+data "github_repository" "this" {
+  full_name = var.github_repo
+}
+
+data "github_organization" "this" {
+  name = local.github_owner
+}
+
+locals {
+  github_owner = split("/", var.github_repo)[0]
+  github_name  = split("/", var.github_repo)[1]
+
+  oidc_subject = join("", [
+    "repo:${local.github_owner}@${data.github_organization.this.id}",
+    "/${local.github_name}@${data.github_repository.this.repo_id}",
+    ":environment:${var.environment}",
+  ])
+}
+
 resource "azuread_application_registration" "github_actions" {
   display_name     = "github-actions-${local.name}"
   sign_in_audience = "AzureADMyOrg"
@@ -11,12 +30,17 @@ resource "azuread_service_principal" "github_actions" {
   owners    = [data.azuread_client_config.current.object_id]
 }
 
-resource "azuread_application_federated_identity_credential" "github_actions" {
+resource "azuread_application_flexible_federated_identity_credential" "github_actions" {
   application_id = azuread_application_registration.github_actions.id
   display_name   = "gha-${local.name}"
-  audiences      = ["api://AzureADTokenExchange"]
+  audience       = "api://AzureADTokenExchange"
   issuer         = "https://token.actions.githubusercontent.com"
-  subject        = "repo:${var.github_repo}:environment:${var.environment}"
+
+  claims_matching_expression = join(" and ", [
+    "claims['sub'] matches '${local.oidc_subject}'",
+    "claims['repository_id'] eq '${data.github_repository.this.repo_id}'",
+    "claims['repository_owner_id'] eq '${data.github_organization.this.id}'",
+  ])
 }
 
 resource "azurerm_role_assignment" "github_actions_acr_push" {
@@ -46,7 +70,7 @@ resource "azurerm_role_assignment" "github_actions_resource_group_reader" {
 }
 
 resource "github_repository_environment" "this" {
-  repository  = split("/", var.github_repo)[1]
+  repository  = local.github_name
   environment = var.environment
 }
 
