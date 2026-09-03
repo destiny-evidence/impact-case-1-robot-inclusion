@@ -106,6 +106,11 @@ variable "github_repo" {
   default     = "destiny-evidence/impact-case-1-robot-inclusion"
 }
 
+variable "github_owner_id" {
+  description = "Immutable numeric ID of the GitHub organisation."
+  type        = string
+}
+
 variable "github_app_id" {
   description = "GitHub App ID for configuring repository environments"
   type        = string

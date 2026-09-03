@@ -5,16 +5,12 @@ data "github_repository" "this" {
   full_name = var.github_repo
 }
 
-data "github_organization" "this" {
-  name = local.github_owner
-}
-
 locals {
   github_owner = split("/", var.github_repo)[0]
   github_name  = split("/", var.github_repo)[1]
 
   oidc_subject = join("", [
-    "repo:${local.github_owner}@${data.github_organization.this.id}",
+    "repo:${local.github_owner}@${var.github_owner_id}",
     "/${local.github_name}@${data.github_repository.this.repo_id}",
     ":environment:${var.environment}",
   ])
@@ -39,7 +35,7 @@ resource "azuread_application_flexible_federated_identity_credential" "github_ac
   claims_matching_expression = join(" and ", [
     "claims['sub'] matches '${local.oidc_subject}'",
     "claims['repository_id'] eq '${data.github_repository.this.repo_id}'",
-    "claims['repository_owner_id'] eq '${data.github_organization.this.id}'",
+    "claims['repository_owner_id'] eq '${var.github_owner_id}'",
   ])
 }
 
