@@ -1,0 +1,43 @@
+name: Deploy
+
+on:
+  push:
+    branches: [main, feat/infra]
+  workflow_dispatch:
+
+permissions:
+  id-token: write
+  contents: read
+
+jobs:
+  deploy:
+    runs-on: ubuntu-latest
+    environment: staging
+    env:
+      IMAGE: ${{ vars.REGISTRY_SERVER }}/${{ vars.APP_NAME }}:${{ github.sha }}
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Az CLI login
+        uses: azure/login@v2.1.0
+        with:
+          client-id: ${{ vars.AZURE_CLIENT_ID }}
+          tenant-id: ${{ vars.AZURE_TENANT_ID }}
+          subscription-id: ${{ vars.AZURE_SUBSCRIPTION_ID }}
+
+      - name: Build and push image
+        run: |
+          az acr login --name ${{ vars.REGISTRY_NAME }}
+          docker build -t "$IMAGE" .
+          docker push "$IMAGE"
+
+      - name: Deploy built image to each robot
+        uses: Azure/cli@v2.0.0
+        with:
+          inlineScript: |
+            for app in ${{ vars.CONTAINER_APP_NAMES }}; do
+              az containerapp update \
+                --name "$app" \
+                --resource-group ${{ vars.RESOURCE_GROUP }} \
+                --image ${{ env.IMAGE }}
+            done

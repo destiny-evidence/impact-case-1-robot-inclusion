@@ -6,7 +6,7 @@ from typing import TYPE_CHECKING
 from uuid import UUID
 
 import httpx
-from destiny_sdk.client import KeycloakOAuthMiddleware, OAuthClient, RobotClient
+from destiny_sdk.client import RobotClient
 from destiny_sdk.enhancements import (
     AbstractContentEnhancement,
     BibliographicMetadataEnhancement,
@@ -14,7 +14,6 @@ from destiny_sdk.enhancements import (
 )
 from destiny_sdk.references import Reference
 from destiny_sdk.robots import (
-    EnhancementRequestIn,
     RobotEnhancementBatch,
     RobotEnhancementBatchResult,
 )
@@ -59,7 +58,7 @@ class BatchedResultWriter:
     async def finalise(self) -> None:
         """Commit the staged blocks, in order, as the blob contents."""
         latest = "".join(f"<Latest>{block_id}</Latest>" for block_id in self.block_ids)
-        body = ('<?xml version="1.0" encoding="utf-8"?>' f"<BlockList>{latest}</BlockList>").encode()
+        body = (f'<?xml version="1.0" encoding="utf-8"?><BlockList>{latest}</BlockList>').encode()
 
         url = httpx.URL(self.target_url).copy_merge_params({"comp": "blocklist"})
         response = await self.client.put(
@@ -81,9 +80,6 @@ class Repository:
 
     def __init__(self, settings: "Settings", logger: "Logger") -> None:
         """Initialise the repository utils."""
-        if settings.robot_secret is None or settings.keycloak_id is None or settings.keycloak_secret is None:
-            raise ValueError
-
         self.logger = logger
         self.settings = settings
 
@@ -95,29 +91,6 @@ class Repository:
         self.robot_client.session.timeout = httpx.Timeout(HTTP_TIMEOUT_SECONDS)
 
         self.blob_client = httpx.AsyncClient(timeout=HTTP_TIMEOUT_SECONDS)
-
-        self.repo_client = OAuthClient(
-            settings.base_url,
-            KeycloakOAuthMiddleware(
-                settings.keycloak_url,
-                settings.keycloak_realm,
-                settings.keycloak_id,
-                settings.keycloak_secret,
-            ),
-            timeout=HTTP_TIMEOUT_SECONDS,
-        )
-
-    def request_to_enhance(self, destiny_ids: list[UUID]) -> None:
-        """Ask repository if we can provide enhancements for these IDs."""
-        response = self.repo_client.get_client().post(
-            "/enhancement-requests/",
-            json=EnhancementRequestIn(
-                robot_id=self.settings.robot_id,
-                reference_ids=destiny_ids,
-                # source=
-            ).model_dump(mode="json"),
-        )
-        response.raise_for_status()
 
     async def get_next_batch(
         self,
