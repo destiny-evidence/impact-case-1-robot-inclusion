@@ -167,12 +167,12 @@ class Settings(BaseSettings):
         default=True,
         description="If true, set BooleanAnnotation(value=False) for references that are not classified because of missing abstracts or chained prompts.",
     )
-    annotation_scheme_query: str = Field(default="query-inclusion", description="Defines the value to use for BooleanAnnotation.scheme for search queries")
+    annotation_scheme_query: str = Field(default="search", description="Defines the value to use for BooleanAnnotation.scheme for search queries")
     annotation_scheme_incl: str = Field(
         default="domain-inclusion",
         description="Defines the value to use for BooleanAnnotation.scheme for inclusion classification",
     )
-    annotation_label_query: str = Field(default="destiny", description="Defines the value to use for BooleanAnnotation.label for search queries")
+    annotation_label_query: str = Field(default="destiny-ic1-inclusion", description="Defines the value to use for BooleanAnnotation.label for search queries")
     annotation_label_prefilter: str = Field(
         default="destiny-prefilter",
         description="Defines the value to use for BooleanAnnotation.label for pre-filtering",
