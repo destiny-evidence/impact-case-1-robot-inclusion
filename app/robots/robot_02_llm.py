@@ -62,7 +62,6 @@ class EnhancementRunner(Runner):
         results: dict[str, list[BooleanAnnotation]] = defaultdict(list)
 
         filtered_references = references
-        result_writer = self.repository.get_batched_enhancement_writer(batch_info=batch_info)
         for label, prompt in self.prompts.items():
             decisions = []
             for reference in filtered_references:
@@ -101,7 +100,7 @@ class EnhancementRunner(Runner):
             ],
         )
 
+        num_annotations = sum(len(annotations) for annotations in results.values())
         self.loop_logger.info(
-            f"[Total: {self.total_entries_processed:,} entries] "
-            f"Submitted {result_writer.num_enhancements:,} enhancements in {result_writer.num_batches:,} batches.",
+            f"[Total: {self.total_entries_processed:,} entries] Submitted {len(results):,} enhancements with {num_annotations:,} annotations.",
         )

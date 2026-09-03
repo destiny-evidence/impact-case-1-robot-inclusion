@@ -71,35 +71,34 @@ class EnhancementRunner(Runner):
             self.loop_logger.debug("No batches available")
             return
 
-        result_writer = self.repository.get_batched_enhancement_writer(batch_info=batch_info)
-
+        enhancements = []
         for batch in batched(references, self.settings.batch_size_prefilter, strict=False):
             documents = [get_title_abstract_from_reference(reference) for reference in batch]
             texts = [f'{title or ""}. {abstract or ""}' for title, abstract in documents]
             mask = [len(text) > 0 and title is not None and abstract is not None for text, (title, abstract) in zip(texts, documents, strict=False)]
 
             # Write implicit exclude enhancements
-            await result_writer.submit_batch(
-                [self._assemble_enhancement(reference, value=False, score=0.0) for reference, mask_ in zip(batch, mask, strict=False) if not mask_],
-            )
+            self.loop_logger.debug(f"Caching batch exclusion results.")
+            enhancements += [
+                self._assemble_enhancement(reference, value=False, score=0.0)
+                for reference, mask_ in zip(batch, mask, strict=False)
+                if not mask_
+            ]
 
             filtered_references = [reference for reference, mask_ in zip(batch, mask, strict=False) if mask_]
             filtered_texts = [text for text, mask_ in zip(texts, mask, strict=False) if mask_]
             y_pred = self.classifier.predict_proba(filtered_texts)
 
             # Write SVM predictions exclude enhancements
-            self.loop_logger.debug(f"Submitting {len(filtered_references):,} batch prediction results.")
-            await result_writer.submit_batch(
-                [
-                    self._assemble_enhancement(reference, value=score >= self.classifier.threshold_, score=score)
-                    for reference, score in zip(filtered_references, y_pred, strict=False)
-                ],
-            )
+            self.loop_logger.debug(f"Caching {len(filtered_references):,} batch prediction results.")
+            enhancements += [
+                self._assemble_enhancement(reference, value=score >= self.classifier.threshold_, score=score)
+                for reference, score in zip(filtered_references, y_pred, strict=False)
+            ]
 
-        self.loop_logger.debug("Finalising batched result writer.")
-        await result_writer.finalise()
+        self.loop_logger.debug("Submitting enhancements to repository.")
+        await self.repository.submit_enhancements(            batch_info=batch_info,            enhancements=enhancements)
 
         self.loop_logger.info(
-            f"[Total: {self.total_entries_processed:,} entries] "
-            f"Submitted {result_writer.num_enhancements:,} enhancements in {result_writer.num_batches:,} batches.",
+            f"[Total: {self.total_entries_processed:,} entries] Submitted {len(enhancements):,} enhancements.",
         )
