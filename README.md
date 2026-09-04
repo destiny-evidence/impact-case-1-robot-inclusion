@@ -16,7 +16,7 @@ references are then passed to a second _balanced prompt_. Remaining references a
 _high-precision_ prompt to identify references on ((climate OR mitigation OR adaptation) AND health).
 
 The LLM prompts can be configured to run in a majority vote mode. In that case, each prompt will be repeated until a
-majority is reached. If you fixed the random seed and temperature, the seed will be offset on each iteration. 
+majority is reached. If you fixed the random seed and temperature, the seed will be offset on each iteration.
 
 ## Deployment notes
 
@@ -53,6 +53,21 @@ uv run --env-file .env.secret.shared --env-file .env.secret.robot-query robot qu
 uv run --env-file .env.secret.shared --env-file .env.secret.robot-prefilter robot prefilter
 uv run --env-file .env.secret.shared --env-file .env.secret.robot-llm robot llm
 ```
+
+### Prefilter model
+
+The serialised sklearn model (`.configs/models/high-recall-svm.sklearn`) is not committed. The deploy workflow
+downloads it from Azure blob storage into the build context before `docker build`, so it is baked into the image at
+the path given by `MODEL_PREFILTER`. This needs:
+
+- the `model_blob_url` Terraform variable, holding the full blob URL
+  (`https://<account>.blob.core.windows.net/<container>/<blob>`). Terraform publishes it as the `MODEL_BLOB_URL`
+  GitHub environment variable alongside the other `vars.*` the workflow uses — see `infra/github.tf`;
+- the `Storage Blob Data Reader` role on that container (or account) for the GitHub Actions service principal, which
+  authenticates via OIDC. The storage account is outside this stack, so this role is granted manually.
+
+For local runs, put the file at `.configs/models/high-recall-svm.sklearn` yourself, or point `MODEL_PREFILTER`
+elsewhere.
 
 ## Development notes
 
