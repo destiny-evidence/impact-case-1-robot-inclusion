@@ -28,9 +28,10 @@ class HuggingfaceClassifier:
         source = str(path.resolve())
         self.logger.info(f'Loading trained model from {source}')
         with open(path / 'model_info.json', 'r') as fp:
-            self.info = json.load(fp)
-        self.model_name = self.info['model_name']
-        self.model_max_length = self.info['model_max_length']
+            self.info: dict[str, Any] = json.load(fp)
+        self.model_name: str = self.info['model_name']
+        self.model_max_length: int = self.info['model_max_length']
+        self.threshold_: float = self.info['threshold_']
         self.classes_ = np.asarray(self.info.pop('classes_'))
         self.model_ = AutoModelForSequenceClassification.from_pretrained(source)
         self.tokenizer_ = AutoTokenizer.from_pretrained(self.model_name, model_max_length=self.model_max_length, cache_dir=path / "tokenizers")
@@ -59,17 +60,16 @@ class HuggingfaceClassifier:
 
         dataset = self.tokenize(texts=X, labels=None)
         self.logger.debug('Predicting on texts')
-        # self.model_.eval()
         with torch.no_grad():
             y_pred = self.model_.predict_proba(dataset)
             if type(y_pred) is torch.Tensor:
                 y_pred = y_pred.numpy()
             if len(y_pred.shape) > 1:
                 y_pred = y_pred[:, 1]
-        self.logger.debug(f'  > Predictions include {(y_pred > 0.5).sum():,} records at threshold >0.5')
+        self.logger.debug(f'  > Predictions include {(y_pred > self.threshold_).sum():,} records at threshold > {self.threshold_}')
         return y_pred
 
     def predict(self, X: list[str]) -> np.ndarray:
         if self.classes_ is None:
             raise RuntimeError('Model must be trained before predicting!')
-        return self.classes_[np.argmax(self.predict_proba(X), axis=1)]
+        return self.predict_proba(X) > self.threshold_
