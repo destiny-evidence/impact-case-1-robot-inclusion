@@ -1,4 +1,5 @@
 """Pre-filter robot using cheap and simple high-recall model."""
+
 from collections import OrderedDict, defaultdict
 from uuid import UUID
 
@@ -59,7 +60,7 @@ class EnhancementRunner(Runner):
             self.loop_logger.debug("No batches available")
             return
 
-        results: dict[str, list[BooleanAnnotation]] = defaultdict(list)
+        results: dict[UUID, list[BooleanAnnotation]] = defaultdict(list)
 
         filtered_references = references
         for label, prompt in self.prompts.items():
@@ -67,7 +68,7 @@ class EnhancementRunner(Runner):
             for reference in filtered_references:
                 # Prepare title and abstract
                 title, abstract = get_title_abstract_from_reference(reference)
-                text = f'{title or ""}. {abstract or ""}'
+                text = f"{title or ''}. {abstract or ''}"
 
                 # Ensure we have a title and abstract and are above a minimum length
                 if title is None or abstract is None or len(text) < self.settings.min_text_length:
@@ -90,7 +91,7 @@ class EnhancementRunner(Runner):
             batch_info=batch_info,
             enhancements=[
                 Enhancement(
-                    reference_id=UUID(reference_id),
+                    reference_id=reference_id,
                     source=self.NAME,
                     visibility=self.settings.enhancement_visibility,
                     robot_version=self.settings.robot_version,
