@@ -6,7 +6,7 @@ from enum import Enum
 from .robots import LLMRobot, PrefilterRobot, QueryRobot, Robot
 
 
-class RunnerTask(str, Enum):
+class RunnerTask(str, Enum):  # noqa: UP042
     """Enum for types of runners."""
 
     query = "query"
@@ -36,7 +36,7 @@ def main(
 
 
 def run() -> None:
-    import typer
+    import typer  # noqa: PLC0415
 
     typer.run(main)
 

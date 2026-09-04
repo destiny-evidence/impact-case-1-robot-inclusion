@@ -13,6 +13,7 @@ from litellm.types.utils import ModelResponse
 from pydantic import BaseModel, ConfigDict, Field
 
 from app.util import get_settings, measure_runtime
+from app.util.util import RateLimiter
 
 settings = get_settings()
 CONFIG_DIVISION = 50 * "!"
@@ -35,7 +36,7 @@ class ResponseSchema(BaseModel):
     reasoning: str = Field(..., description="Step-by-step assessment against the criterion.")
 
 
-class CommunicationFormat(str, Enum):
+class CommunicationFormat(str, Enum):  # noqa: UP042
     deet = "deet"
     optimized = "optimized"
 
@@ -101,6 +102,8 @@ def estimate_prompt_tokens(messages: list[dict[str, str]]) -> int:
 
 # Semaphore to limit the number of parallel prompts
 _prompting_semaphore = asyncio.Semaphore(settings.llm_max_concurrent_prompts)
+# Rate limiter to make sure we are not exceeding the API limits
+_rate_limiter = RateLimiter(rate=settings.llm_prompts_per_minute, period=60.0)
 
 
 class LLMClassifier:
@@ -167,6 +170,7 @@ class LLMClassifier:
 
         # Wait to the prompt until we have enough capacity (not too many parallel threads/prompts)
         async with _prompting_semaphore:
+            await _rate_limiter.acquire()
             process_seconds, response = await asyncio.to_thread(_run)
 
         response_content, num_input_tokens, num_output_tokens, num_cached_tokens = self._parse_response(response, process_seconds=process_seconds)
@@ -264,8 +268,9 @@ class LLMClassifier:
         num_incl = 0
         num_excl = 0
         for vote_num in range(self.config.votes):
-            response_content, messages, num_input_tokens, num_output_tokens, num_cached_tokens, process_seconds = await self._call_llm(
-                text, seed_offset=vote_num,
+            response_content, _messages, _num_input_tokens, _num_output_tokens, _num_cached_tokens, _process_seconds = await self._call_llm(
+                text,
+                seed_offset=vote_num,
             )
             annotation = self._convert_response(response_content)
             annotations.append(annotation)

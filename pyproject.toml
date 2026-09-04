@@ -73,6 +73,7 @@ target-version = "py313"
 lint.ignore = [
     "ARG002", # Unused method argument: `db_debug`
     "COM812", # trailing commas (ruff-format recommended)
+    "CPY001",  # Missing copyright notice at top of file
     "D100", # Missing docstring in public module
     "D101", # Missing docstring in public class
     "D102", # Missing docstring in public method
@@ -90,7 +91,9 @@ lint.ignore = [
     "FIX002", # implicit trust that TODOs are not trivial, or else they would be fixed
     "G004", # Logging statement uses f-string
     "ISC001", # simplify implicit str concatenation (ruff-format recommended)
+    "N803",# Argument name `X` should be lowercase
     "N806", # Variable `..` in function should be lowercase
+    "TC003",# Move standard library import `...` into a type-checking block
     "TRY003", # Avoid specifying long messages outside the exception class
     "TRY400", # Use `logging.exception` instead of `logging.error
     "TRY401", # Redundant exception object included in `logging.exception` call

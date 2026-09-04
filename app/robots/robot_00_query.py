@@ -2,7 +2,7 @@
 
 import re
 
-from destiny_sdk.enhancements import Enhancement, AnnotationEnhancement, BooleanAnnotation
+from destiny_sdk.enhancements import AnnotationEnhancement, BooleanAnnotation, Enhancement
 from destiny_sdk.robots import RobotAutomationIn
 
 from app.util import Runner

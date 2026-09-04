@@ -4,9 +4,8 @@ import asyncio
 from collections import OrderedDict, defaultdict
 from uuid import UUID
 
-from destiny_sdk.enhancements import Enhancement, AnnotationEnhancement, BooleanAnnotation
+from destiny_sdk.enhancements import AnnotationEnhancement, BooleanAnnotation, Enhancement
 from destiny_sdk.references import Reference
-
 from destiny_sdk.robots import RobotAutomationIn
 
 from app.classifiers.llm import LLMClassifier, PromptConfig
@@ -86,19 +85,16 @@ class EnhancementRunner(Runner):
         for label, prompt in self.prompts.items():
             # Merge parallel prompts before proceeding with remaining included references to the next prompt
             annotation_results = await asyncio.gather(
-                *(
-                    self._annotate_reference(reference, label, prompt)
-                    for reference in filtered_references
-                ),
+                *(self._annotate_reference(reference, label, prompt) for reference in filtered_references),
             )
 
             decisions = []
-            for reference, (annotation, decision) in zip(filtered_references, annotation_results):
+            for reference, (annotation, decision) in zip(filtered_references, annotation_results, strict=True):
                 results[reference.id].append(annotation)
                 decisions.append(decision)
 
             # In the next round, we only continue with included records
-            filtered_references = [reference for reference, decision in zip(filtered_references, decisions) if decision]
+            filtered_references = [reference for reference, decision in zip(filtered_references, decisions, strict=True) if decision]
 
         await self.repository.submit_enhancements(
             batch_info=batch_info,
