@@ -15,6 +15,8 @@ jobs:
     environment: staging
     env:
       IMAGE: ${{ vars.REGISTRY_SERVER }}/${{ vars.APP_NAME }}:${{ github.sha }}
+      # Must match MODEL_PREFILTER in the Dockerfile (minus the /app prefix).
+      MODEL_PATH: .configs/models/high-recall-svm.sklearn
     steps:
       - uses: actions/checkout@v4
 
@@ -24,6 +26,27 @@ jobs:
           client-id: ${{ vars.AZURE_CLIENT_ID }}
           tenant-id: ${{ vars.AZURE_TENANT_ID }}
           subscription-id: ${{ vars.AZURE_SUBSCRIPTION_ID }}
+
+      # The serialised model is not in git; it is pulled into the build context so
+      # `COPY . .` bakes it into the image at $MODEL_PREFILTER.
+      - name: Download prefilter model
+        run: |
+          set -euo pipefail
+          if [ -z "${MODEL_BLOB_URL:-}" ]; then
+            echo "MODEL_BLOB_URL is not set for this environment" >&2
+            exit 1
+          fi
+          mkdir -p "$(dirname "$MODEL_PATH")"
+          az storage blob download \
+            --blob-url "$MODEL_BLOB_URL" \
+            --auth-mode login \
+            --file "$MODEL_PATH" \
+            --no-progress \
+            --only-show-errors
+          test -s "$MODEL_PATH"
+          echo "Downloaded $(du -h "$MODEL_PATH" | cut -f1) to $MODEL_PATH"
+        env:
+          MODEL_BLOB_URL: ${{ vars.MODEL_BLOB_URL }}
 
       - name: Build and push image
         run: |

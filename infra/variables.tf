@@ -88,6 +88,12 @@ variable "llm_azure_api_key" {
   sensitive   = true
 }
 
+# Prefilter model
+variable "model_blob_url" {
+  description = "Full URL of the serialised prefilter model blob, which the deploy workflow bakes into the image. The Actions service principal needs the Storage Blob Data Reader role on it."
+  type        = string
+}
+
 # Container Registry (shared)
 variable "shared_container_registry_name" {
   description = "The name of the shared container registry"
