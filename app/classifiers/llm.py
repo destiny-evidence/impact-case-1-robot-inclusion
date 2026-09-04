@@ -99,6 +99,7 @@ def estimate_prompt_tokens(messages: list[dict[str, str]]) -> int:
     return int(num / 4)
 
 
+# Semaphore to limit the number of parallel prompts
 _prompting_semaphore = asyncio.Semaphore(settings.llm_max_concurrent_prompts)
 
 
@@ -164,6 +165,7 @@ class LLMClassifier:
                 )
             return process_seconds_, response_
 
+        # Wait to the prompt until we have enough capacity (not too many parallel threads/prompts)
         async with _prompting_semaphore:
             process_seconds, response = await asyncio.to_thread(_run)
 
@@ -262,7 +264,9 @@ class LLMClassifier:
         num_incl = 0
         num_excl = 0
         for vote_num in range(self.config.votes):
-            response_content, messages, num_input_tokens, num_output_tokens, num_cached_tokens, process_seconds = await self._call_llm(text, seed_offset=vote_num)
+            response_content, messages, num_input_tokens, num_output_tokens, num_cached_tokens, process_seconds = await self._call_llm(
+                text, seed_offset=vote_num,
+            )
             annotation = self._convert_response(response_content)
             annotations.append(annotation)
             num_incl += int(annotation.value)
