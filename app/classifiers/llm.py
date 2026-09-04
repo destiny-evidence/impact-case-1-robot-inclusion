@@ -1,8 +1,9 @@
+import asyncio
 import copy
 import json
 from enum import Enum
 from pathlib import Path
-from typing import Annotated, Any
+from typing import Annotated, Any, cast
 
 import yaml
 from destiny_sdk.enhancements import BooleanAnnotation
@@ -98,6 +99,9 @@ def estimate_prompt_tokens(messages: list[dict[str, str]]) -> int:
     return int(num / 4)
 
 
+_prompting_semaphore = asyncio.Semaphore(settings.llm_max_concurrent_prompts)
+
+
 class LLMClassifier:
     """
     LiteLLM wrapper to imitate the flow of DEET.
@@ -131,32 +135,38 @@ class LLMClassifier:
                 }
             ]
 
-    def _call_llm(self, text: str, seed_offset: int = 0) -> tuple[str, list[dict[str, Any]], int, int, int, float]:
+    async def _call_llm(self, text: str, seed_offset: int = 0) -> tuple[str, list[dict[str, Any]], int, int, int, float]:
         messages, schema = self._prepare_messages(text=text)
         est_num_tokens = estimate_prompt_tokens(messages)
         if est_num_tokens > self.config.max_context_tokens:
             raise RuntimeError(f"This request likely exceeds the maximum prompt length: {est_num_tokens:,} > {self.config.max_context_tokens:,}")
 
-        with measure_runtime() as process_seconds:
-            response = prompt_llm(
-                model=self.config.model,
-                api_key=settings.llm_azure_api_key,
-                api_base=settings.llm_azure_api_base,
-                messages=messages,
-                seed=self.config.seed + seed_offset if self.config.seed is not None else None,
-                temperature=self.config.temperature,
-                response_format={
-                    "type": "json_schema",
-                    "json_schema": {
-                        "name": "llm_annotation_response",
-                        "schema": schema.model_json_schema(),
-                        "strict": True,
+        def _run() -> tuple[float, ModelResponse | CustomStreamWrapper]:
+            with measure_runtime() as process_seconds_:
+                response_ = prompt_llm(
+                    model=self.config.model,
+                    api_key=settings.llm_azure_api_key,
+                    api_base=settings.llm_azure_api_base,
+                    messages=messages,
+                    seed=self.config.seed + seed_offset if self.config.seed is not None else None,
+                    temperature=self.config.temperature,
+                    response_format={
+                        "type": "json_schema",
+                        "json_schema": {
+                            "name": "llm_annotation_response",
+                            "schema": schema.model_json_schema(),
+                            "strict": True,
+                        },
                     },
-                },
-                max_tokens=self.config.max_tokens,
-                timeout=settings.llm_timeout,
-                num_retries=settings.llm_num_retries,
-            )
+                    max_tokens=self.config.max_tokens,
+                    timeout=settings.llm_timeout,
+                    num_retries=settings.llm_num_retries,
+                )
+            return process_seconds_, response_
+
+        async with _prompting_semaphore:
+            process_seconds, response = await asyncio.to_thread(_run)
+
         response_content, num_input_tokens, num_output_tokens, num_cached_tokens = self._parse_response(response, process_seconds=process_seconds)
         return response_content, messages, num_input_tokens, num_output_tokens, num_cached_tokens, process_seconds
 
@@ -185,7 +195,7 @@ class LLMClassifier:
         num_input_tokens: int = -1
         num_output_tokens: int = -1
         num_cached_tokens: int = -1
-        if response.usage is not None:
+        if hasattr(response, "usage") and response.usage is not None:
             if hasattr(response.usage, "prompt_tokens"):
                 num_input_tokens = response.usage.prompt_tokens or 0
             if hasattr(response.usage, "completion_tokens"):
@@ -193,7 +203,7 @@ class LLMClassifier:
             if hasattr(response.usage, "prompt_tokens_details"):
                 num_cached_tokens = response.usage.prompt_tokens_details or 0
 
-        choice = response.choices[0]
+        choice = response.choices[0]  # type: ignore[union-attr]
         msg = choice.message
         finish_reason = getattr(choice, "finish_reason", None)
 
@@ -215,9 +225,9 @@ class LLMClassifier:
 
         response_content: str
         if getattr(msg, "content", None) is not None:
-            response_content = msg.content
+            response_content = cast("str", msg.content)
         elif getattr(msg, "tool_calls", None):
-            response_content = msg.tool_calls[0].function.arguments
+            response_content = msg.tool_calls[0].function.arguments  # type: ignore[index, union-attr]
         else:
             raise RuntimeError(f"Unclear response! {usage_note}\n{msg}")
         return response_content, num_input_tokens, num_output_tokens, num_cached_tokens
@@ -245,14 +255,14 @@ class LLMClassifier:
 
         raise RuntimeError(f"Invalid communication format: {self.config.communication_format}")
 
-    def annotate(self, text: str) -> BooleanAnnotation:
+    async def annotate(self, text: str) -> BooleanAnnotation:
         num_majority = self.config.votes // 2 + 1
 
         annotations: list[BooleanAnnotation] = []
         num_incl = 0
         num_excl = 0
         for vote_num in range(self.config.votes):
-            response_content, messages, num_input_tokens, num_output_tokens, num_cached_tokens, process_seconds = self._call_llm(text, seed_offset=vote_num)
+            response_content, messages, num_input_tokens, num_output_tokens, num_cached_tokens, process_seconds = await self._call_llm(text, seed_offset=vote_num)
             annotation = self._convert_response(response_content)
             annotations.append(annotation)
             num_incl += int(annotation.value)

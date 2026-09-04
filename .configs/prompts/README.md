@@ -18,7 +18,7 @@ import re
 import csv
 
 REPLACE = re.compile(r'[<>:"/\\|?*\x00-\x1f -]')
-DIVIDER = 50 * '!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!'
+DIVIDER = 50 * '!'
 with open(".configs/prompts/config.yaml") as fp_yml:
     model_conf = fp_yml.read().strip()
 
