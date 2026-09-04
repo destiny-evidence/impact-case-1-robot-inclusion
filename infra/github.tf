@@ -82,6 +82,7 @@ locals {
     ENVIRONMENT_NAME      = var.environment
     CONTAINER_APP_ENV     = azurerm_container_app_environment.this.name
     CONTAINER_APP_NAMES   = join(" ", sort([for a in azurerm_container_app.robot : a.name]))
+    MODEL_BLOB_URL        = var.model_blob_url
   }
 }
 
