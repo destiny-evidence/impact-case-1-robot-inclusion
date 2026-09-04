@@ -11,7 +11,11 @@ dev = [
     "ruff==0.16.5",
     "types-PyYAML>=6.0.12",
 ]
-
+[project.optional-dependencies]
+transformer = [
+    "transformers[torch,optuna,sentencepiece]>=5.14.1,<6",
+    "datasets>=5.0.0,<6",
+]
 [project]
 authors = [
     {email = "max.callaghan@pik-potsdam.de", name = "Max Callaghan"},
