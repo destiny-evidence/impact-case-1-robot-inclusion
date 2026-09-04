@@ -1,10 +1,11 @@
 """Pre-filter robot using cheap and simple high-recall model."""
 
+import asyncio
 from collections import OrderedDict, defaultdict
 from uuid import UUID
 
-from destiny_sdk.enhancements import Enhancement, AnnotationEnhancement, BooleanAnnotation
-
+from destiny_sdk.enhancements import AnnotationEnhancement, BooleanAnnotation, Enhancement
+from destiny_sdk.references import Reference
 from destiny_sdk.robots import RobotAutomationIn
 
 from app.classifiers.llm import LLMClassifier, PromptConfig
@@ -51,6 +52,24 @@ class EnhancementRunner(Runner):
             },
         )
 
+    async def _annotate_reference(
+        self,
+        reference: Reference,
+        label: str,
+        prompt: LLMClassifier,
+    ) -> tuple[BooleanAnnotation, bool]:
+        """Annotate a single reference with one prompt."""
+        title, abstract = get_title_abstract_from_reference(reference)
+        text = f"{title or ''}. {abstract or ''}"
+
+        # Ensure that title and abstract are set, and they are above a minimum length
+        if title is None or abstract is None or len(text) < self.settings.min_text_length:
+            annotation = BooleanAnnotation(scheme=self.settings.annotation_scheme_incl, label=label, value=False, score=None)
+            return annotation, False
+
+        annotation = await prompt.annotate(text=text)
+        return annotation, annotation.value
+
     async def _loop_task(self) -> None:
         """Task for single loop of the enhancement runner."""
         # Poll for approved requests for enhancements
@@ -64,28 +83,18 @@ class EnhancementRunner(Runner):
 
         filtered_references = references
         for label, prompt in self.prompts.items():
+            # Merge parallel prompts before proceeding with remaining included references to the next prompt
+            annotation_results = await asyncio.gather(
+                *(self._annotate_reference(reference, label, prompt) for reference in filtered_references),
+            )
+
             decisions = []
-            for reference in filtered_references:
-                # Prepare title and abstract
-                title, abstract = get_title_abstract_from_reference(reference)
-                text = f"{title or ''}. {abstract or ''}"
-
-                # Ensure we have a title and abstract and are above a minimum length
-                if title is None or abstract is None or len(text) < self.settings.min_text_length:
-                    results[reference.id].append(BooleanAnnotation(scheme=self.settings.annotation_scheme_incl, label=label, value=False, score=None))
-                    decisions.append(False)
-                    continue
-
-                # Run LLM prompt
-                annotation = prompt.annotate(text=text)
-
-                # Track results
-                decision = annotation.value
+            for reference, (annotation, decision) in zip(filtered_references, annotation_results, strict=True):
                 results[reference.id].append(annotation)
                 decisions.append(decision)
 
             # In the next round, we only continue with included records
-            filtered_references = [reference for reference, decision in zip(filtered_references, decisions) if decision]
+            filtered_references = [reference for reference, decision in zip(filtered_references, decisions, strict=True) if decision]
 
         await self.repository.submit_enhancements(
             batch_info=batch_info,

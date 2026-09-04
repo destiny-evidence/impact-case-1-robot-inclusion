@@ -78,7 +78,7 @@ def read_toml_value(path_to_toml: str | Path, *path: str) -> str:
                 f"{steps} did not lead to singular string value in {path_to_toml}",
             )
 
-        return cast("str", current_node)
+        return cast("str", current_node)  # type: ignore[redundant-cast]
 
 
 class Settings(BaseSettings):
@@ -160,6 +160,8 @@ class Settings(BaseSettings):
     llm_max_context_tokens: int = Field(default=3000, description="Maximum number of context tokens to include in a single request per document.")
     llm_timeout: float = Field(default=60.0, description="Per-request timeout in seconds.", gt=0.0)
     llm_num_retries: int = Field(default=3, description="Retries on transient errors (429, 5xx, timeouts).", ge=0)
+    llm_max_concurrent_prompts: int = Field(default=60, description="Maximum number of prompts to run in parallel", ge=1)
+    llm_prompts_per_minute: int = Field(default=60, description="Number of prompts per minute for the API endpoint", ge=1)
 
     # Enhancement settings
     enhancement_visibility: Visibility = Field(default=Visibility.PUBLIC, description="Visibility level for Enhancements")

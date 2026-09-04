@@ -74,16 +74,12 @@ class EnhancementRunner(Runner):
         enhancements = []
         for batch in batched(references, self.settings.batch_size_prefilter, strict=False):
             documents = [get_title_abstract_from_reference(reference) for reference in batch]
-            texts = [f'{title or ""}. {abstract or ""}' for title, abstract in documents]
+            texts = [f"{title or ''}. {abstract or ''}" for title, abstract in documents]
             mask = [len(text) > 0 and title is not None and abstract is not None for text, (title, abstract) in zip(texts, documents, strict=False)]
 
             # Write implicit exclude enhancements
-            self.loop_logger.debug(f"Caching batch exclusion results.")
-            enhancements += [
-                self._assemble_enhancement(reference, value=False, score=0.0)
-                for reference, mask_ in zip(batch, mask, strict=False)
-                if not mask_
-            ]
+            self.loop_logger.debug("Caching batch exclusion results.")
+            enhancements += [self._assemble_enhancement(reference, value=False, score=0.0) for reference, mask_ in zip(batch, mask, strict=False) if not mask_]
 
             filtered_references = [reference for reference, mask_ in zip(batch, mask, strict=False) if mask_]
             filtered_texts = [text for text, mask_ in zip(texts, mask, strict=False) if mask_]
@@ -97,7 +93,7 @@ class EnhancementRunner(Runner):
             ]
 
         self.loop_logger.debug("Submitting enhancements to repository.")
-        await self.repository.submit_enhancements(            batch_info=batch_info,            enhancements=enhancements)
+        await self.repository.submit_enhancements(batch_info=batch_info, enhancements=enhancements)
 
         self.loop_logger.info(
             f"[Total: {self.total_entries_processed:,} entries] Submitted {len(enhancements):,} enhancements.",

@@ -31,7 +31,7 @@ class SklearnClassifier:
         self.threshold_: float = threshold
         self.params_: dict[str, Any] = info
 
-    def predict_proba(self, X: list[str]) -> np.ndarray:  # noqa: N803
+    def predict_proba(self, X: list[str]) -> np.ndarray:
         y_pred: np.ndarray
         if hasattr(self.model_, "predict_proba"):
             y_pred = self.model_.predict_proba(preprocess_text(X))[:, 1]
@@ -43,5 +43,5 @@ class SklearnClassifier:
         logger.debug(f"  > Predictions include {(y_pred > self.threshold_).sum():,} records at threshold >{self.threshold_}")
         return y_pred
 
-    def predict(self, X: list[str]) -> np.ndarray:  # noqa: N803
+    def predict(self, X: list[str]) -> np.ndarray:
         return self.predict_proba(X) >= self.threshold_
