@@ -1,7 +1,7 @@
 """Utility class for interacting with the repository."""
 
 import base64
-from collections.abc import Callable
+from collections.abc import Callable, Sequence
 from typing import TYPE_CHECKING
 from uuid import UUID
 
@@ -14,6 +14,7 @@ from destiny_sdk.enhancements import (
 )
 from destiny_sdk.references import Reference
 from destiny_sdk.robots import (
+    EnhancementResultEntry,
     RobotEnhancementBatch,
     RobotEnhancementBatchResult,
 )
@@ -121,8 +122,8 @@ class Repository:
             finalise_callback=self._finalise_enhancement_batch,
         )
 
-    async def submit_enhancements(self, batch_info: RobotEnhancementBatch, enhancements: list[Enhancement]) -> None:
-        """Submit enhancements to repository."""
+    async def submit_enhancements(self, batch_info: RobotEnhancementBatch, enhancements: Sequence[EnhancementResultEntry]) -> None:
+        """Submit enhancements to repository. Entries may be enhancements or per-reference errors."""
         file_content = b""
         for enhancement in enhancements:
             file_content += (enhancement.to_jsonl() + "\n").encode("utf-8")

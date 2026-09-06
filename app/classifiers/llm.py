@@ -10,13 +10,29 @@ from destiny_sdk.enhancements import BooleanAnnotation
 from litellm import acompletion as prompt_llm
 from litellm.litellm_core_utils.streaming_handler import CustomStreamWrapper
 from litellm.types.utils import ModelResponse
-from pydantic import BaseModel, ConfigDict, Field
+from pydantic import BaseModel, ConfigDict, Field, ValidationError
 
 from app.util import get_settings, measure_runtime
 from app.util.util import RateLimiter
 
 settings = get_settings()
 CONFIG_DIVISION = 50 * "!"
+
+
+class PromptError(Exception):
+    """Prompting this reference failed in a way that re-prompting will not fix."""
+
+
+class PromptTooLongError(PromptError):
+    """Estimated prompt exceeds the configured context limit."""
+
+
+class ContentFilteredError(PromptError):
+    """The provider blocked the response."""
+
+
+class BadResponseError(PromptError):
+    """Response was unusable."""
 
 
 class ResponseAttribute(BaseModel):
@@ -143,7 +159,7 @@ class LLMClassifier:
         messages, schema = self._prepare_messages(text=text)
         est_num_tokens = estimate_prompt_tokens(messages)
         if est_num_tokens > self.config.max_context_tokens:
-            raise RuntimeError(f"This request likely exceeds the maximum prompt length: {est_num_tokens:,} > {self.config.max_context_tokens:,}")
+            raise PromptTooLongError(f"{est_num_tokens:,} > {self.config.max_context_tokens:,} tokens")
 
         # Wait to prompt until we have enough capacity (not too many parallel prompts)
         async with _prompting_semaphore:
@@ -166,7 +182,9 @@ class LLMClassifier:
                     },
                     max_tokens=self.config.max_tokens,
                     timeout=settings.llm_timeout,
-                    num_retries=settings.llm_num_retries,
+                    # Retry in the OpenAI client, which is status-aware and honours Retry-After.
+                    num_retries=0,
+                    max_retries=settings.llm_num_retries,
                 )
 
         response_content, num_input_tokens, num_output_tokens, num_cached_tokens = self._parse_response(response, process_seconds=process_seconds)
@@ -213,17 +231,17 @@ class LLMClassifier:
 
         refusal = getattr(msg, "refusal", None)
         if refusal:
-            raise RuntimeError(f"Model refused to answer ({usage_note}): {refusal}")
+            raise BadResponseError(f"Model refused to answer ({usage_note}): {refusal}")
 
         if finish_reason == "length":
-            raise RuntimeError(
+            raise BadResponseError(
                 f"Response truncated at the token limit "
                 f"(max_tokens={self.config.max_tokens}); {usage_note}. "
                 f"Raise max_tokens or shorten the requested reasoning.",
             )
 
         if finish_reason == "content_filter":
-            raise RuntimeError(f"Response blocked by the content filter ({usage_note}).")
+            raise ContentFilteredError(f"Response blocked by the content filter ({usage_note}).")
 
         response_content: str
         if getattr(msg, "content", None) is not None:
@@ -231,10 +249,16 @@ class LLMClassifier:
         elif getattr(msg, "tool_calls", None):
             response_content = msg.tool_calls[0].function.arguments  # type: ignore[index, union-attr]
         else:
-            raise RuntimeError(f"Unclear response! {usage_note}\n{msg}")
+            raise BadResponseError(f"Unclear response! {usage_note}\n{msg}")
         return response_content, num_input_tokens, num_output_tokens, num_cached_tokens
 
     def _convert_response(self, response_content: str) -> BooleanAnnotation:
+        try:
+            return self._parse_content(response_content)
+        except ValidationError as e:
+            raise BadResponseError(f"Response did not match the schema: {e}") from e
+
+    def _parse_content(self, response_content: str) -> BooleanAnnotation:
         if self.config.communication_format == CommunicationFormat.deet:
             deet_response = ResponseSchemaDEET.model_validate_json(response_content)
             return BooleanAnnotation(
@@ -257,6 +281,10 @@ class LLMClassifier:
 
         raise RuntimeError(f"Invalid communication format: {self.config.communication_format}")
 
+    async def _vote(self, text: str, seed_offset: int) -> BooleanAnnotation:
+        response_content, *_ = await self._call_llm(text, seed_offset=seed_offset)
+        return self._convert_response(response_content)
+
     async def annotate(self, text: str) -> BooleanAnnotation:
         num_majority = self.config.votes // 2 + 1
 
@@ -264,11 +292,11 @@ class LLMClassifier:
         num_incl = 0
         num_excl = 0
         for vote_num in range(self.config.votes):
-            response_content, _messages, _num_input_tokens, _num_output_tokens, _num_cached_tokens, _process_seconds = await self._call_llm(
-                text,
-                seed_offset=vote_num,
-            )
-            annotation = self._convert_response(response_content)
+            try:
+                annotation = await self._vote(text, seed_offset=vote_num)
+            except BadResponseError:
+                # Responses are sampled, so one fresh attempt is worth it before giving up.
+                annotation = await self._vote(text, seed_offset=vote_num + self.config.votes)
             annotations.append(annotation)
             num_incl += int(annotation.value)
             num_excl += int(not annotation.value)

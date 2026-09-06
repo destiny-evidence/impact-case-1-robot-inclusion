@@ -6,10 +6,14 @@ from uuid import UUID
 
 from destiny_sdk.enhancements import AnnotationEnhancement, BooleanAnnotation, Enhancement
 from destiny_sdk.references import Reference
-from destiny_sdk.robots import RobotAutomationIn
+from destiny_sdk.robots import EnhancementResultEntry, LinkedRobotError, RobotAutomationIn
+from litellm.exceptions import BadRequestError
 
-from app.classifiers.llm import LLMClassifier, PromptConfig
+from app.classifiers.llm import LLMClassifier, PromptConfig, PromptError
 from app.util import Runner, get_title_abstract_from_reference
+
+# Failures that will recur for a reference no matter how often we retry.
+PERMANENT_ERRORS = (BadRequestError, PromptError)
 
 
 class EnhancementRunner(Runner):
@@ -80,39 +84,54 @@ class EnhancementRunner(Runner):
             return False
 
         results: dict[UUID, list[BooleanAnnotation]] = defaultdict(list)
+        failures: dict[UUID, str] = {}
 
         filtered_references = references
         for label, prompt in self.prompts.items():
             # Merge parallel prompts before proceeding with remaining included references to the next prompt
             annotation_results = await asyncio.gather(
                 *(self._annotate_reference(reference, label, prompt) for reference in filtered_references),
+                return_exceptions=True,
             )
 
-            decisions = []
-            for reference, (annotation, decision) in zip(filtered_references, annotation_results, strict=True):
+            included = []
+            for reference, outcome in zip(filtered_references, annotation_results, strict=True):
+                if isinstance(outcome, BaseException):
+                    if not isinstance(outcome, PERMANENT_ERRORS):
+                        # Returning nothing lets the lease lapse so the batch is redelivered
+                        # This leans on the repository's lease mechanism to retry a few times
+                        self.loop_logger.error(f"Abandoning batch {batch_info.id} for redelivery: {outcome!r}")
+                        return False
+                    failures[reference.id] = f"{type(outcome).__name__} on {label}: {outcome}"
+                    continue
+
+                annotation, decision = outcome
                 results[reference.id].append(annotation)
-                decisions.append(decision)
+                if decision:
+                    included.append(reference)
 
             # In the next round, we only continue with included records
-            filtered_references = [reference for reference, decision in zip(filtered_references, decisions, strict=True) if decision]
+            filtered_references = included
 
-        await self.repository.submit_enhancements(
-            batch_info=batch_info,
-            enhancements=[
-                Enhancement(
-                    reference_id=reference_id,
-                    source=self.NAME,
-                    visibility=self.settings.enhancement_visibility,
-                    robot_version=self.settings.robot_version,
-                    content=AnnotationEnhancement(annotations=annotations),
-                )
-                for reference_id, annotations in results.items()
-            ],
-        )
+        entries: list[EnhancementResultEntry] = [
+            Enhancement(
+                reference_id=reference_id,
+                source=self.NAME,
+                visibility=self.settings.enhancement_visibility,
+                robot_version=self.settings.robot_version,
+                content=AnnotationEnhancement(annotations=annotations),
+            )
+            for reference_id, annotations in results.items()
+            if reference_id not in failures
+        ]
+        entries += [LinkedRobotError(reference_id=reference_id, message=message) for reference_id, message in failures.items()]
+
+        await self.repository.submit_enhancements(batch_info=batch_info, enhancements=entries)
 
         num_annotations = sum(len(annotations) for annotations in results.values())
         self.loop_logger.info(
-            f"[Total: {self.total_entries_processed:,} entries] Submitted {len(results):,} enhancements with {num_annotations:,} annotations.",
+            f"[Total: {self.total_entries_processed:,} entries] Submitted {len(entries):,} results "
+            f"with {num_annotations:,} annotations and {len(failures):,} failed references.",
         )
 
         return True
