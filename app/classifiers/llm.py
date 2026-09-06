@@ -7,7 +7,7 @@ from typing import Annotated, Any, cast
 
 import yaml
 from destiny_sdk.enhancements import BooleanAnnotation
-from litellm import completion as prompt_llm
+from litellm import acompletion as prompt_llm
 from litellm.litellm_core_utils.streaming_handler import CustomStreamWrapper
 from litellm.types.utils import ModelResponse
 from pydantic import BaseModel, ConfigDict, Field
@@ -145,9 +145,11 @@ class LLMClassifier:
         if est_num_tokens > self.config.max_context_tokens:
             raise RuntimeError(f"This request likely exceeds the maximum prompt length: {est_num_tokens:,} > {self.config.max_context_tokens:,}")
 
-        def _run() -> tuple[float, ModelResponse | CustomStreamWrapper]:
-            with measure_runtime() as process_seconds_:
-                response_ = prompt_llm(
+        # Wait to prompt until we have enough capacity (not too many parallel prompts)
+        async with _prompting_semaphore:
+            await _rate_limiter.acquire()
+            with measure_runtime() as process_seconds:
+                response = await prompt_llm(
                     model=self.config.model,
                     api_key=settings.llm_azure_api_key,
                     api_base=settings.llm_azure_api_base,
@@ -166,12 +168,6 @@ class LLMClassifier:
                     timeout=settings.llm_timeout,
                     num_retries=settings.llm_num_retries,
                 )
-            return process_seconds_, response_
-
-        # Wait to the prompt until we have enough capacity (not too many parallel threads/prompts)
-        async with _prompting_semaphore:
-            await _rate_limiter.acquire()
-            process_seconds, response = await asyncio.to_thread(_run)
 
         response_content, num_input_tokens, num_output_tokens, num_cached_tokens = self._parse_response(response, process_seconds=process_seconds)
         return response_content, messages, num_input_tokens, num_output_tokens, num_cached_tokens, process_seconds

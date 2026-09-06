@@ -70,14 +70,14 @@ class EnhancementRunner(Runner):
         annotation = await prompt.annotate(text=text)
         return annotation, annotation.value
 
-    async def _loop_task(self) -> None:
+    async def _loop_task(self) -> bool:
         """Task for single loop of the enhancement runner."""
         # Poll for approved requests for enhancements
         batch_info, references = await self.repository.get_next_batch()
 
         if batch_info is None or references is None:
             self.loop_logger.debug("No batches available")
-            return
+            return False
 
         results: dict[UUID, list[BooleanAnnotation]] = defaultdict(list)
 
@@ -114,3 +114,5 @@ class EnhancementRunner(Runner):
         self.loop_logger.info(
             f"[Total: {self.total_entries_processed:,} entries] Submitted {len(results):,} enhancements with {num_annotations:,} annotations.",
         )
+
+        return True

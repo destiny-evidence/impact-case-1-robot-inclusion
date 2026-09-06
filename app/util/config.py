@@ -124,7 +124,7 @@ class Settings(BaseSettings):
         description="How long to sleep between each loop",
     )
     batch_size: int = Field(
-        default=10,
+        default=100,
         description="The number of references to include per batch",
     )
 
@@ -160,8 +160,8 @@ class Settings(BaseSettings):
     llm_max_context_tokens: int = Field(default=3000, description="Maximum number of context tokens to include in a single request per document.")
     llm_timeout: float = Field(default=60.0, description="Per-request timeout in seconds.", gt=0.0)
     llm_num_retries: int = Field(default=3, description="Retries on transient errors (429, 5xx, timeouts).", ge=0)
-    llm_max_concurrent_prompts: int = Field(default=60, description="Maximum number of prompts to run in parallel", ge=1)
-    llm_prompts_per_minute: int = Field(default=60, description="Number of prompts per minute for the API endpoint", ge=1)
+    llm_max_concurrent_prompts: int = Field(default=100, description="Maximum number of prompts to run in parallel", ge=1)
+    llm_prompts_per_minute: int = Field(default=1200, description="Number of prompts per minute for the API endpoint", ge=1)
 
     # Enhancement settings
     enhancement_visibility: Visibility = Field(default=Visibility.PUBLIC, description="Visibility level for Enhancements")

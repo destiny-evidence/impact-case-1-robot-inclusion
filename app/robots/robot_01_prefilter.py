@@ -62,14 +62,14 @@ class EnhancementRunner(Runner):
             ),
         )
 
-    async def _loop_task(self) -> None:
+    async def _loop_task(self) -> bool:
         """Task for single loop of the enhancement runner."""
         # Poll for approved requests for enhancements
         batch_info, references = await self.repository.get_next_batch()
 
         if batch_info is None or references is None:
             self.loop_logger.debug("No batches available")
-            return
+            return False
 
         enhancements = []
         for batch in batched(references, self.settings.batch_size_prefilter, strict=False):
@@ -98,3 +98,5 @@ class EnhancementRunner(Runner):
         self.loop_logger.info(
             f"[Total: {self.total_entries_processed:,} entries] Submitted {len(enhancements):,} enhancements.",
         )
+
+        return True

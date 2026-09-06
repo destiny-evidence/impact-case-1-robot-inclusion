@@ -48,8 +48,11 @@ variable "robots" {
     memory           = optional(string, "1Gi")
     replicas         = optional(number, 1)
     interval_seconds = optional(number, 30)
-    batch_size       = optional(number, 10)
-    extra_env        = optional(map(string), {})
+    batch_size       = optional(number, 100)
+    # LLM robot only; ignored by the others.
+    llm_max_concurrent_prompts = optional(number, 100)
+    llm_prompts_per_minute     = optional(number, 1200)
+    extra_env                  = optional(map(string), {})
   }))
   validation {
     condition     = toset(keys(var.robots)) == toset(["query", "prefilter", "llm"])
