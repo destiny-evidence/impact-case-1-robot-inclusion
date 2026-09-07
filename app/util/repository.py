@@ -1,7 +1,8 @@
 """Utility class for interacting with the repository."""
 
+import asyncio
 import base64
-from collections.abc import Callable, Sequence
+from collections.abc import Awaitable, Callable, Sequence
 from typing import TYPE_CHECKING
 from uuid import UUID
 
@@ -28,7 +29,7 @@ HTTP_TIMEOUT_SECONDS = 600
 
 
 class BatchedResultWriter:
-    def __init__(self, batch_info: RobotEnhancementBatch, client: httpx.AsyncClient, finalise_callback: Callable[[UUID], None]) -> None:
+    def __init__(self, batch_info: RobotEnhancementBatch, client: httpx.AsyncClient, finalise_callback: Callable[[UUID], Awaitable[None]]) -> None:
         self.batch_info = batch_info
         self.target_url = str(batch_info.result_storage_url)
         self.block_ids: list[str] = []
@@ -73,7 +74,7 @@ class BatchedResultWriter:
         )
         response.raise_for_status()
 
-        self._finalize_callback(self.batch_info.id)
+        await self._finalize_callback(self.batch_info.id)
 
 
 class Repository:
@@ -98,7 +99,8 @@ class Repository:
         batch_size: int | None = None,
     ) -> tuple[RobotEnhancementBatch | None, list[Reference] | None]:
         """Ask repository which references it wants enhancements for."""
-        batch_info = self.robot_client.poll_robot_enhancement_batch(
+        batch_info = await asyncio.to_thread(
+            self.robot_client.poll_robot_enhancement_batch,
             robot_id=self.settings.robot_id,
             limit=self.settings.batch_size if batch_size is None else batch_size,
             timeout=HTTP_TIMEOUT_SECONDS,
@@ -132,7 +134,7 @@ class Repository:
             target_url=str(batch_info.result_storage_url),
             jsonl_enhancements=file_content,
         )
-        self._finalise_enhancement_batch(batch_info.id)
+        await self._finalise_enhancement_batch(batch_info.id)
 
     async def _upload_enhancements(self, target_url: str, jsonl_enhancements: bytes) -> None:
         response = await self.blob_client.put(
@@ -146,12 +148,10 @@ class Repository:
         )
         response.raise_for_status()
 
-    def _finalise_enhancement_batch(self, batch_id: UUID) -> None:
-        self.robot_client.send_robot_enhancement_batch_result(
-            RobotEnhancementBatchResult(
-                request_id=batch_id,
-                error=None,
-            ),
+    async def _finalise_enhancement_batch(self, batch_id: UUID) -> None:
+        await asyncio.to_thread(
+            self.robot_client.send_robot_enhancement_batch_result,
+            RobotEnhancementBatchResult(request_id=batch_id, error=None),
         )
 
 
