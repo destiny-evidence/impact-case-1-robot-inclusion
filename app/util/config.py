@@ -124,7 +124,7 @@ class Settings(BaseSettings):
         description="How long to sleep between each loop",
     )
     batch_size: int = Field(
-        default=100,
+        default=500,
         description="The number of references to include per batch",
     )
 
@@ -147,7 +147,7 @@ class Settings(BaseSettings):
 
     # Pre-filter execution settings
     batch_size_prefilter: int = Field(
-        default=10,
+        default=2000,
         description="Processing the full enhancement batch at once might consume too much RAM, so we will process the data in smaller batches of this size.",
     )
 

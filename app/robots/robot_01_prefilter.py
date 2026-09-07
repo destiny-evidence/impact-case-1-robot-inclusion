@@ -83,6 +83,9 @@ class EnhancementRunner(Runner):
 
             filtered_references = [reference for reference, mask_ in zip(batch, mask, strict=False) if mask_]
             filtered_texts = [text for text, mask_ in zip(texts, mask, strict=False) if mask_]
+            if not filtered_texts:
+                continue
+
             y_pred = self.classifier.predict_proba(filtered_texts)
 
             # Write SVM predictions exclude enhancements

@@ -48,7 +48,7 @@ variable "robots" {
     memory           = optional(string, "1Gi")
     replicas         = optional(number, 1)
     interval_seconds = optional(number, 30)
-    batch_size       = optional(number, 100)
+    batch_size       = optional(number, 500)
     # LLM robot only; ignored by the others.
     llm_max_concurrent_prompts = optional(number, 100)
     llm_prompts_per_minute     = optional(number, 1200)
