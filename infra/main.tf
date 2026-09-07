@@ -56,6 +56,7 @@ locals {
     LLM_AZURE_API_BASE         = var.llm_azure_api_base
     LLM_MAX_CONCURRENT_PROMPTS = var.llm_max_concurrent_prompts
     LLM_PROMPTS_PER_MINUTE     = var.llm_prompts_per_minute
+    OTEL_ENABLED               = var.otel_enabled
   }
 }
 
@@ -87,6 +88,14 @@ resource "azurerm_container_app" "robot" {
   secret {
     name  = "llm-azure-api-key"
     value = var.llm_azure_api_key
+  }
+
+  secret {
+    name = "otel-config"
+    value = jsonencode({
+      trace_endpoint = var.honeycomb_trace_endpoint
+      api_key        = var.honeycomb_api_key
+    })
   }
 
   template {
@@ -129,6 +138,13 @@ resource "azurerm_container_app" "robot" {
       env {
         name        = "LLM_AZURE_API_KEY"
         secret_name = "llm-azure-api-key"
+      }
+
+      # Carries the Honeycomb ingest key, so it is a secret rather than a plain
+      # value in the dynamic env block above.
+      env {
+        name        = "OTEL_CONFIG"
+        secret_name = "otel-config"
       }
     }
   }

@@ -7,8 +7,11 @@ import sys
 from abc import ABC, abstractmethod
 from typing import TYPE_CHECKING
 
-from .config import get_logger, get_settings
+from opentelemetry import trace
+
+from .config import OTelConfig, get_logger, get_settings
 from .repository import Repository
+from .telemetry import configure_telemetry, instrument, shutdown_telemetry
 
 if TYPE_CHECKING:
     from types import FrameType
@@ -22,11 +25,22 @@ class Runner(ABC):
     def __init__(self, name: str) -> None:
         """Initialise runner."""
         self.settings = get_settings()
+        self.name = name
 
         logger = get_logger("inclusion-robot", init_logging=True, base_level=self.settings.loglevel)
         self.logger = logger.getChild(name)
         self.loop_logger = self.logger.getChild("loop")
         self.total_entries_processed = 0
+
+        if self.settings.otel_enabled:
+            configure_telemetry(
+                self.settings.otel_config or OTelConfig(),
+                task=name,
+                environment=self.settings.env.value,
+                version=self.settings.robot_version,
+            )
+            instrument(capture_llm_content=self.settings.otel_capture_llm_content)
+        self.tracer = trace.get_tracer(__name__)
 
         self.repository = Repository(settings=self.settings, logger=logger.getChild("repository"))
         self.shutdown_event = asyncio.Event()
@@ -46,13 +60,23 @@ class Runner(ABC):
         """Perform iteration of runner loop. Returns True if a batch was processed."""
         raise NotImplementedError
 
+    async def _traced_loop_task(self) -> bool:
+        """Run one iteration of `_loop_task` as the root span of its own trace."""
+        with self.tracer.start_as_current_span("robot.loop") as span:
+            span.set_attribute("robot.task", self.name)
+            try:
+                return await self._loop_task()
+            except Exception as e:
+                span.set_status(trace.StatusCode.ERROR, str(e))
+                raise
+
     async def _main_loop(self) -> None:
         """Run main loop."""
         loop_logger = self.logger.getChild("loop")
 
         while True:
             try:
-                did_work = await self._loop_task()
+                did_work = await self._traced_loop_task()
             except Exception as e:
                 loop_logger.error(f"Encountered an error: {e}")
                 loop_logger.exception(e)
@@ -107,3 +131,6 @@ class Runner(ABC):
             self.logger.error(f"Fatal error occurred: {e}")
             self.logger.exception(e)
             sys.exit(1)
+        finally:
+            # Flush buffered spans on every exit path, including sys.exit().
+            shutdown_telemetry()

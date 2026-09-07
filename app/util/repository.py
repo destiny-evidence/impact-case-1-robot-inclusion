@@ -18,6 +18,7 @@ from destiny_sdk.robots import (
     RobotEnhancementBatch,
     RobotEnhancementBatchResult,
 )
+from opentelemetry import trace
 
 if TYPE_CHECKING:
     from logging import Logger
@@ -98,17 +99,24 @@ class Repository:
         batch_size: int | None = None,
     ) -> tuple[RobotEnhancementBatch | None, list[Reference] | None]:
         """Ask repository which references it wants enhancements for."""
+        span = trace.get_current_span()
+
         batch_info = self.robot_client.poll_robot_enhancement_batch(
             robot_id=self.settings.robot_id,
             limit=self.settings.batch_size if batch_size is None else batch_size,
             timeout=HTTP_TIMEOUT_SECONDS,
         )
         if batch_info is None:
+            span.set_attributes({"app.batch.found": False})
             return None, None
+
+        span.set_attribute("app.batch.id", str(batch_info.id))
 
         response = await self.blob_client.get(str(batch_info.reference_storage_url))
         response.raise_for_status()
         references = [Reference.from_jsonl(line) for line in response.text.splitlines() if line.strip()]
+
+        span.set_attributes({"app.batch.found": len(references) > 0, "app.reference.count": len(references)})
 
         if len(references) == 0:
             return None, None
@@ -124,6 +132,8 @@ class Repository:
 
     async def submit_enhancements(self, batch_info: RobotEnhancementBatch, enhancements: Sequence[EnhancementResultEntry]) -> None:
         """Submit enhancements to repository. Entries may be enhancements or per-reference errors."""
+        trace.get_current_span().set_attribute("app.enhancement.count", len(enhancements))
+
         file_content = b""
         for enhancement in enhancements:
             file_content += (enhancement.to_jsonl() + "\n").encode("utf-8")

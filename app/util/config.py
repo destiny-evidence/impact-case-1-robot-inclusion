@@ -10,7 +10,7 @@ from typing import Any, cast
 from uuid import UUID
 
 from destiny_sdk.visibility import Visibility
-from pydantic import Field, HttpUrl, SecretStr
+from pydantic import BaseModel, Field, HttpUrl, SecretStr, model_validator
 from pydantic_settings import BaseSettings, SettingsConfigDict
 
 
@@ -81,6 +81,14 @@ def read_toml_value(path_to_toml: str | Path, *path: str) -> str:
         return cast("str", current_node)  # type: ignore[redundant-cast]
 
 
+class OTelConfig(BaseModel):
+    """Honeycomb OTLP/HTTP export config, supplied as the JSON env var `OTEL_CONFIG`."""
+
+    trace_endpoint: str = Field(default="https://api.honeycomb.io/v1/traces", description="OTLP/HTTP traces endpoint")
+    api_key: str | None = Field(default=None, description="Honeycomb ingest key, sent as the x-honeycomb-team header")
+    timeout: int = Field(default=30, description="Export timeout in seconds", gt=0)
+
+
 class Settings(BaseSettings):
     """Settings model for polling robot."""
 
@@ -92,6 +100,14 @@ class Settings(BaseSettings):
 
     # Runtime settings
     loglevel: str | int = Field(default="INFO", description="Logging level")
+
+    # Observability settings
+    otel_enabled: bool = Field(default=False, description="Export traces to Honeycomb over OTLP/HTTP.")
+    otel_config: OTelConfig | None = Field(default=None, description="Honeycomb export config, as JSON in OTEL_CONFIG.")
+    otel_capture_llm_content: bool = Field(
+        default=False,
+        description="Attach prompt and completion text to LLM spans. Off by default: the prompts carry reference abstracts.",
+    )
 
     # Robot identification settings
     robot_id: UUID = Field(
@@ -191,6 +207,12 @@ class Settings(BaseSettings):
         default="destiny-high-precision",
         description="Defines the value to use for BooleanAnnotation.label for high-precision LLM decisions",
     )
+
+    @model_validator(mode="after")
+    def _warn_missing_otel_api_key(self) -> "Settings":
+        if self.otel_enabled and not (self.otel_config and self.otel_config.api_key):
+            logging.getLogger("inclusion-robot").warning("OTEL_ENABLED set but no Honeycomb api_key in OTEL_CONFIG")
+        return self
 
     @property
     def prompt_configs(self) -> OrderedDict[str, Path]:
