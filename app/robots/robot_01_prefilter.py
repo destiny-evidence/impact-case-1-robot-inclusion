@@ -72,28 +72,36 @@ class EnhancementRunner(Runner):
             return False
 
         enhancements = []
-        for batch in batched(references, self.settings.batch_size_prefilter, strict=False):
-            documents = [get_title_abstract_from_reference(reference) for reference in batch]
-            texts = [f"{title or ''}. {abstract or ''}" for title, abstract in documents]
-            mask = [len(text) > 0 and title is not None and abstract is not None for text, (title, abstract) in zip(texts, documents, strict=False)]
+        for index, batch in enumerate(batched(references, self.settings.batch_size_prefilter, strict=False)):
+            with self.tracer.start_as_current_span("prefilter.predict") as span:
+                span.set_attribute("app.batch.index", index)
 
-            # Write implicit exclude enhancements
-            self.loop_logger.debug("Caching batch exclusion results.")
-            enhancements += [self._assemble_enhancement(reference, value=False, score=0.0) for reference, mask_ in zip(batch, mask, strict=False) if not mask_]
+                documents = [get_title_abstract_from_reference(reference) for reference in batch]
+                texts = [f"{title or ''}. {abstract or ''}" for title, abstract in documents]
+                mask = [len(text) > 0 and title is not None and abstract is not None for text, (title, abstract) in zip(texts, documents, strict=False)]
 
-            filtered_references = [reference for reference, mask_ in zip(batch, mask, strict=False) if mask_]
-            filtered_texts = [text for text, mask_ in zip(texts, mask, strict=False) if mask_]
-            if not filtered_texts:
-                continue
+                # Write implicit exclude enhancements
+                self.loop_logger.debug("Caching batch exclusion results.")
+                enhancements += [
+                    self._assemble_enhancement(reference, value=False, score=0.0) for reference, mask_ in zip(batch, mask, strict=False) if not mask_
+                ]
 
-            y_pred = self.classifier.predict_proba(filtered_texts)
+                filtered_references = [reference for reference, mask_ in zip(batch, mask, strict=False) if mask_]
+                filtered_texts = [text for text, mask_ in zip(texts, mask, strict=False) if mask_]
+                span.set_attribute("app.reference.count", len(filtered_references))
+                if not filtered_texts:
+                    continue
 
-            # Write SVM predictions exclude enhancements
-            self.loop_logger.debug(f"Caching {len(filtered_references):,} batch prediction results.")
-            enhancements += [
-                self._assemble_enhancement(reference, value=score >= self.classifier.threshold_, score=score)
-                for reference, score in zip(filtered_references, y_pred, strict=False)
-            ]
+                y_pred = self.classifier.predict_proba(filtered_texts)
+
+                span.set_attribute("app.prefilter.included", int((y_pred >= self.classifier.threshold_).sum()))
+
+                # Write SVM predictions exclude enhancements
+                self.loop_logger.debug(f"Caching {len(filtered_references):,} batch prediction results.")
+                enhancements += [
+                    self._assemble_enhancement(reference, value=score >= self.classifier.threshold_, score=score)
+                    for reference, score in zip(filtered_references, y_pred, strict=False)
+                ]
 
         self.loop_logger.debug("Submitting enhancements to repository.")
         await self.repository.submit_enhancements(batch_info=batch_info, enhancements=enhancements)

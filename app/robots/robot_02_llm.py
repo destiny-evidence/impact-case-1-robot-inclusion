@@ -8,6 +8,7 @@ from destiny_sdk.enhancements import AnnotationEnhancement, BooleanAnnotation, E
 from destiny_sdk.references import Reference
 from destiny_sdk.robots import EnhancementResultEntry, LinkedRobotError, RobotAutomationIn
 from litellm.exceptions import BadRequestError
+from opentelemetry import trace
 
 from app.classifiers.llm import LLMClassifier, PromptConfig, PromptError
 from app.util import Runner, get_title_abstract_from_reference
@@ -64,10 +65,13 @@ class EnhancementRunner(Runner):
 
         annotations = []
         for label, prompt in self.prompts.items():
-            if usable:
-                annotation = await prompt.annotate(text=text)
-            else:
-                annotation = BooleanAnnotation(scheme=self.settings.annotation_scheme_incl, label=label, value=False, score=None)
+            with self.tracer.start_as_current_span("llm.prompt") as span:
+                span.set_attribute("app.llm.label", label)
+                if usable:
+                    annotation = await prompt.annotate(text=text)
+                else:
+                    annotation = BooleanAnnotation(scheme=self.settings.annotation_scheme_incl, label=label, value=False, score=None)
+                span.set_attribute("app.llm.included", annotation.value)
             annotations.append(annotation)
             if not annotation.value:
                 break
@@ -85,21 +89,30 @@ class EnhancementRunner(Runner):
         results: dict[UUID, list[BooleanAnnotation]] = {}
         failures: dict[UUID, str] = {}
 
-        outcomes = await asyncio.gather(
-            *(self._annotate_reference(reference) for reference in references),
-            return_exceptions=True,
-        )
+        with self.tracer.start_as_current_span("llm.batch") as span:
+            span.set_attribute("app.reference.count", len(references))
 
-        for reference, outcome in zip(references, outcomes, strict=True):
-            if isinstance(outcome, BaseException):
-                if not isinstance(outcome, PERMANENT_ERRORS):
-                    # Returning nothing lets the lease lapse so the batch is redelivered
-                    # This leans on the repository's lease mechanism to retry a few times
-                    self.loop_logger.error(f"Abandoning batch {batch_info.id} for redelivery: {outcome!r}")
-                    return False
-                failures[reference.id] = f"{type(outcome).__name__}: {outcome}"
-                continue
-            results[reference.id] = outcome
+            # One coroutine per reference, each walking the whole prompt cascade, so a slow
+            # prompt only delays its own reference rather than the whole batch.
+            outcomes = await asyncio.gather(
+                *(self._annotate_reference(reference) for reference in references),
+                return_exceptions=True,
+            )
+
+            for reference, outcome in zip(references, outcomes, strict=True):
+                if isinstance(outcome, BaseException):
+                    if not isinstance(outcome, PERMANENT_ERRORS):
+                        # Returning nothing lets the lease lapse so the batch is redelivered
+                        # This leans on the repository's lease mechanism to retry a few times
+                        self.loop_logger.error(f"Abandoning batch {batch_info.id} for redelivery: {outcome!r}")
+                        span.set_status(trace.StatusCode.ERROR, f"abandoned for redelivery: {outcome!r}")
+                        return False
+                    failures[reference.id] = f"{type(outcome).__name__}: {outcome}"
+                    continue
+                results[reference.id] = outcome
+
+            included = sum(1 for annotations in results.values() if annotations and annotations[-1].value)
+            span.set_attributes({"app.llm.included": included, "app.llm.failures": len(failures)})
 
         entries: list[EnhancementResultEntry] = [
             Enhancement(
