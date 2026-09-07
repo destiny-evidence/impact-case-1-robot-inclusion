@@ -48,8 +48,10 @@ variable "robots" {
     memory           = optional(string, "1Gi")
     replicas         = optional(number, 1)
     interval_seconds = optional(number, 30)
-    batch_size       = optional(number, 10)
-    extra_env        = optional(map(string), {})
+    batch_size       = optional(number, 500)
+    # Batches in flight per container; lets one worker prompt while another does repository I/O.
+    concurrent_batches = optional(number, 1)
+    extra_env          = optional(map(string), {})
   }))
   validation {
     condition     = toset(keys(var.robots)) == toset(["query", "prefilter", "llm"])
@@ -77,6 +79,18 @@ variable "destiny_repository_url" {
 }
 
 # LLM
+variable "llm_max_concurrent_prompts" {
+  description = "Maximum LLM prompts in flight per container. Divide by replica count if the LLM robot is scaled out."
+  type        = number
+  default     = 100
+}
+
+variable "llm_prompts_per_minute" {
+  description = "LLM prompts per minute per container, against the Foundry deployment quota. Divide by replica count if the LLM robot is scaled out."
+  type        = number
+  default     = 1200
+}
+
 variable "llm_azure_api_base" {
   description = "Base URL for Azure OpenAI"
   type        = string
@@ -92,6 +106,25 @@ variable "llm_azure_api_key" {
 variable "model_blob_url" {
   description = "Full URL of the serialised prefilter model blob, which the deploy workflow bakes into the image. The Actions service principal needs the Storage Blob Data Reader role on it."
   type        = string
+}
+
+variable "otel_enabled" {
+  description = "Whether to export traces to Honeycomb."
+  type        = bool
+  default     = true
+}
+
+variable "honeycomb_api_key" {
+  description = "Honeycomb ingest key (x-honeycomb-team). Empty disables export."
+  type        = string
+  default     = ""
+  sensitive   = true
+}
+
+variable "honeycomb_trace_endpoint" {
+  description = "Honeycomb OTLP/HTTP traces endpoint."
+  type        = string
+  default     = "https://api.honeycomb.io/v1/traces"
 }
 
 # Container Registry (shared)

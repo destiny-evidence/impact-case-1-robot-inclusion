@@ -51,9 +51,12 @@ resource "azurerm_container_app_environment" "this" {
 
 locals {
   shared_env = {
-    ENV                = var.environment
-    BASE_URL           = var.destiny_repository_url
-    LLM_AZURE_API_BASE = var.llm_azure_api_base
+    ENV                        = var.environment
+    BASE_URL                   = var.destiny_repository_url
+    LLM_AZURE_API_BASE         = var.llm_azure_api_base
+    LLM_MAX_CONCURRENT_PROMPTS = var.llm_max_concurrent_prompts
+    LLM_PROMPTS_PER_MINUTE     = var.llm_prompts_per_minute
+    OTEL_ENABLED               = var.otel_enabled
   }
 }
 
@@ -87,6 +90,14 @@ resource "azurerm_container_app" "robot" {
     value = var.llm_azure_api_key
   }
 
+  secret {
+    name = "otel-config"
+    value = jsonencode({
+      trace_endpoint = var.honeycomb_trace_endpoint
+      api_key        = var.honeycomb_api_key
+    })
+  }
+
   template {
     min_replicas = each.value.replicas
     max_replicas = each.value.replicas
@@ -106,9 +117,10 @@ resource "azurerm_container_app" "robot" {
         for_each = merge(
           local.shared_env,
           {
-            ROBOT_ID         = each.value.robot_id
-            INTERVAL_SECONDS = each.value.interval_seconds
-            BATCH_SIZE       = each.value.batch_size
+            ROBOT_ID           = each.value.robot_id
+            INTERVAL_SECONDS   = each.value.interval_seconds
+            BATCH_SIZE         = each.value.batch_size
+            CONCURRENT_BATCHES = each.value.concurrent_batches
           },
           each.value.extra_env,
           var.extra_env,
@@ -127,6 +139,13 @@ resource "azurerm_container_app" "robot" {
       env {
         name        = "LLM_AZURE_API_KEY"
         secret_name = "llm-azure-api-key"
+      }
+
+      # Carries the Honeycomb ingest key, so it is a secret rather than a plain
+      # value in the dynamic env block above.
+      env {
+        name        = "OTEL_CONFIG"
+        secret_name = "otel-config"
       }
     }
   }

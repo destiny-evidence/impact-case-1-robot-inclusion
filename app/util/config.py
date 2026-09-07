@@ -10,7 +10,7 @@ from typing import Any, cast
 from uuid import UUID
 
 from destiny_sdk.visibility import Visibility
-from pydantic import Field, HttpUrl, SecretStr
+from pydantic import BaseModel, Field, HttpUrl, SecretStr, model_validator
 from pydantic_settings import BaseSettings, SettingsConfigDict
 
 
@@ -78,7 +78,15 @@ def read_toml_value(path_to_toml: str | Path, *path: str) -> str:
                 f"{steps} did not lead to singular string value in {path_to_toml}",
             )
 
-        return cast("str", current_node)
+        return cast("str", current_node)  # type: ignore[redundant-cast]
+
+
+class OTelConfig(BaseModel):
+    """Honeycomb OTLP/HTTP export config, supplied as the JSON env var `OTEL_CONFIG`."""
+
+    trace_endpoint: str = Field(default="https://api.honeycomb.io/v1/traces", description="OTLP/HTTP traces endpoint")
+    api_key: str | None = Field(default=None, description="Honeycomb ingest key, sent as the x-honeycomb-team header")
+    timeout: int = Field(default=30, description="Export timeout in seconds", gt=0)
 
 
 class Settings(BaseSettings):
@@ -92,6 +100,14 @@ class Settings(BaseSettings):
 
     # Runtime settings
     loglevel: str | int = Field(default="INFO", description="Logging level")
+
+    # Observability settings
+    otel_enabled: bool = Field(default=False, description="Export traces to Honeycomb over OTLP/HTTP.")
+    otel_config: OTelConfig | None = Field(default=None, description="Honeycomb export config, as JSON in OTEL_CONFIG.")
+    otel_capture_llm_content: bool = Field(
+        default=False,
+        description="Attach prompt and completion text to LLM spans. Off by default: the prompts carry reference abstracts.",
+    )
 
     # Robot identification settings
     robot_id: UUID = Field(
@@ -123,8 +139,13 @@ class Settings(BaseSettings):
         default=30,
         description="How long to sleep between each loop",
     )
+    concurrent_batches: int = Field(
+        default=1,
+        description="Batches to process at once. Lets one worker prompt while another polls or submits.",
+        ge=1,
+    )
     batch_size: int = Field(
-        default=10,
+        default=500,
         description="The number of references to include per batch",
     )
 
@@ -147,7 +168,7 @@ class Settings(BaseSettings):
 
     # Pre-filter execution settings
     batch_size_prefilter: int = Field(
-        default=10,
+        default=2000,
         description="Processing the full enhancement batch at once might consume too much RAM, so we will process the data in smaller batches of this size.",
     )
 
@@ -158,8 +179,10 @@ class Settings(BaseSettings):
     )
     llm_azure_api_base: str | None = Field(default=None, description="Base URL for azure openAI.")
     llm_max_context_tokens: int = Field(default=3000, description="Maximum number of context tokens to include in a single request per document.")
-    llm_timeout: float = Field(default=60.0, description="Per-request timeout in seconds.", gt=0.0)
-    llm_num_retries: int = Field(default=3, description="Retries on transient errors (429, 5xx, timeouts).", ge=0)
+    llm_timeout: float = Field(default=15.0, description="Per-request timeout in seconds. Normal calls run 3-7s.", gt=0.0)
+    llm_num_retries: int = Field(default=3, description="Retries on transient errors.", ge=0)
+    llm_max_concurrent_prompts: int = Field(default=100, description="Maximum number of prompts to run in parallel", ge=1)
+    llm_prompts_per_minute: int = Field(default=1200, description="Number of prompts per minute for the API endpoint", ge=1)
 
     # Enhancement settings
     enhancement_visibility: Visibility = Field(default=Visibility.PUBLIC, description="Visibility level for Enhancements")
@@ -189,6 +212,12 @@ class Settings(BaseSettings):
         default="destiny-high-precision",
         description="Defines the value to use for BooleanAnnotation.label for high-precision LLM decisions",
     )
+
+    @model_validator(mode="after")
+    def _warn_missing_otel_api_key(self) -> "Settings":
+        if self.otel_enabled and not (self.otel_config and self.otel_config.api_key):
+            logging.getLogger("inclusion-robot").warning("OTEL_ENABLED set but no Honeycomb api_key in OTEL_CONFIG")
+        return self
 
     @property
     def prompt_configs(self) -> OrderedDict[str, Path]:
