@@ -51,9 +51,11 @@ resource "azurerm_container_app_environment" "this" {
 
 locals {
   shared_env = {
-    ENV                = var.environment
-    BASE_URL           = var.destiny_repository_url
-    LLM_AZURE_API_BASE = var.llm_azure_api_base
+    ENV                        = var.environment
+    BASE_URL                   = var.destiny_repository_url
+    LLM_AZURE_API_BASE         = var.llm_azure_api_base
+    LLM_MAX_CONCURRENT_PROMPTS = var.llm_max_concurrent_prompts
+    LLM_PROMPTS_PER_MINUTE     = var.llm_prompts_per_minute
   }
 }
 
@@ -106,11 +108,9 @@ resource "azurerm_container_app" "robot" {
         for_each = merge(
           local.shared_env,
           {
-            ROBOT_ID                   = each.value.robot_id
-            INTERVAL_SECONDS           = each.value.interval_seconds
-            BATCH_SIZE                 = each.value.batch_size
-            LLM_MAX_CONCURRENT_PROMPTS = each.value.llm_max_concurrent_prompts
-            LLM_PROMPTS_PER_MINUTE     = each.value.llm_prompts_per_minute
+            ROBOT_ID         = each.value.robot_id
+            INTERVAL_SECONDS = each.value.interval_seconds
+            BATCH_SIZE       = each.value.batch_size
           },
           each.value.extra_env,
           var.extra_env,

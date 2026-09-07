@@ -49,10 +49,7 @@ variable "robots" {
     replicas         = optional(number, 1)
     interval_seconds = optional(number, 30)
     batch_size       = optional(number, 500)
-    # LLM robot only; ignored by the others.
-    llm_max_concurrent_prompts = optional(number, 100)
-    llm_prompts_per_minute     = optional(number, 1200)
-    extra_env                  = optional(map(string), {})
+    extra_env        = optional(map(string), {})
   }))
   validation {
     condition     = toset(keys(var.robots)) == toset(["query", "prefilter", "llm"])
@@ -80,6 +77,18 @@ variable "destiny_repository_url" {
 }
 
 # LLM
+variable "llm_max_concurrent_prompts" {
+  description = "Maximum LLM prompts in flight per container. Divide by replica count if the LLM robot is scaled out."
+  type        = number
+  default     = 100
+}
+
+variable "llm_prompts_per_minute" {
+  description = "LLM prompts per minute per container, against the Foundry deployment quota. Divide by replica count if the LLM robot is scaled out."
+  type        = number
+  default     = 1200
+}
+
 variable "llm_azure_api_base" {
   description = "Base URL for Azure OpenAI"
   type        = string
