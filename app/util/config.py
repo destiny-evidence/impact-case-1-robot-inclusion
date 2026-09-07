@@ -123,6 +123,11 @@ class Settings(BaseSettings):
         default=30,
         description="How long to sleep between each loop",
     )
+    concurrent_batches: int = Field(
+        default=1,
+        description="Batches to process at once. Lets one worker prompt while another polls or submits.",
+        ge=1,
+    )
     batch_size: int = Field(
         default=500,
         description="The number of references to include per batch",

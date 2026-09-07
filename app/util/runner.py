@@ -47,7 +47,11 @@ class Runner(ABC):
         raise NotImplementedError
 
     async def _main_loop(self) -> None:
-        """Run main loop."""
+        """Run `concurrent_batches` workers, so one prompts while another does repository I/O."""
+        await asyncio.gather(*(self._worker() for _ in range(self.settings.concurrent_batches)))
+
+    async def _worker(self) -> None:
+        """Poll, process and submit batches until cancelled."""
         loop_logger = self.logger.getChild("loop")
 
         while True:

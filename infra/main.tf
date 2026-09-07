@@ -108,9 +108,10 @@ resource "azurerm_container_app" "robot" {
         for_each = merge(
           local.shared_env,
           {
-            ROBOT_ID         = each.value.robot_id
-            INTERVAL_SECONDS = each.value.interval_seconds
-            BATCH_SIZE       = each.value.batch_size
+            ROBOT_ID           = each.value.robot_id
+            INTERVAL_SECONDS   = each.value.interval_seconds
+            BATCH_SIZE         = each.value.batch_size
+            CONCURRENT_BATCHES = each.value.concurrent_batches
           },
           each.value.extra_env,
           var.extra_env,

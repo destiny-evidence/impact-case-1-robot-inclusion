@@ -49,7 +49,9 @@ variable "robots" {
     replicas         = optional(number, 1)
     interval_seconds = optional(number, 30)
     batch_size       = optional(number, 500)
-    extra_env        = optional(map(string), {})
+    # Batches in flight per container; lets one worker prompt while another does repository I/O.
+    concurrent_batches = optional(number, 1)
+    extra_env          = optional(map(string), {})
   }))
   validation {
     condition     = toset(keys(var.robots)) == toset(["query", "prefilter", "llm"])
