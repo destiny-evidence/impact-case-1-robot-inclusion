@@ -1,6 +1,7 @@
 import asyncio
 import copy
 import json
+import re
 from enum import Enum
 from pathlib import Path
 from typing import Annotated, Any, cast
@@ -18,6 +19,8 @@ from app.util.util import RateLimiter
 
 settings = get_settings()
 CONFIG_DIVISION = 50 * "!"
+# C0 controls (and DEL) other than tab/newline/carriage return.
+CONTROL_CHARS = re.compile(r"[\x00-\x08\x0b\x0c\x0e-\x1f\x7f]")
 
 
 class PromptError(Exception):
@@ -259,9 +262,14 @@ class LLMClassifier:
 
     def _convert_response(self, response_content: str) -> BooleanAnnotation:
         try:
-            return self._parse_content(response_content)
+            annotation = self._parse_content(response_content)
         except ValidationError as e:
             raise BadResponseError(f"Response did not match the schema: {e}") from e
+
+        reasoning = (annotation.data or {}).get("reasoning") or ""
+        if match := CONTROL_CHARS.search(str(reasoning)):
+            raise BadResponseError(f"Reasoning contained control character U+{ord(match.group()):04X} at offset {match.start():,}")
+        return annotation
 
     def _parse_content(self, response_content: str) -> BooleanAnnotation:
         if self.config.communication_format == CommunicationFormat.deet:
