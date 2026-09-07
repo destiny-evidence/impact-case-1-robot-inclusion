@@ -66,7 +66,7 @@ class EnhancementRunner(Runner):
         annotations = []
         for label, prompt in self.prompts.items():
             with self.tracer.start_as_current_span("llm.prompt") as span:
-                span.set_attribute("app.llm.label", label)
+                span.set_attributes({"app.llm.label": label, "app.reference.id": str(reference.id)})
                 if usable:
                     annotation = await prompt.annotate(text=text)
                 else:
