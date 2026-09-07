@@ -106,6 +106,25 @@ variable "model_blob_url" {
   type        = string
 }
 
+variable "otel_enabled" {
+  description = "Whether to export traces to Honeycomb."
+  type        = bool
+  default     = true
+}
+
+variable "honeycomb_api_key" {
+  description = "Honeycomb ingest key (x-honeycomb-team). Empty disables export."
+  type        = string
+  default     = ""
+  sensitive   = true
+}
+
+variable "honeycomb_trace_endpoint" {
+  description = "Honeycomb OTLP/HTTP traces endpoint."
+  type        = string
+  default     = "https://api.honeycomb.io/v1/traces"
+}
+
 # Container Registry (shared)
 variable "shared_container_registry_name" {
   description = "The name of the shared container registry"

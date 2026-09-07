@@ -10,6 +10,7 @@ from destiny_sdk.enhancements import BooleanAnnotation
 from litellm import acompletion as prompt_llm
 from litellm.litellm_core_utils.streaming_handler import CustomStreamWrapper
 from litellm.types.utils import ModelResponse
+from opentelemetry import trace
 from pydantic import BaseModel, ConfigDict, Field, ValidationError
 
 from app.util import get_settings, measure_runtime
@@ -161,11 +162,15 @@ class LLMClassifier:
         if est_num_tokens > self.config.max_context_tokens:
             raise PromptTooLongError(f"{est_num_tokens:,} > {self.config.max_context_tokens:,} tokens")
 
+        # Passed explicitly rather than relying on the ambient context.
+        parent_span = trace.get_current_span()
+
         # Wait to prompt until we have enough capacity (not too many parallel prompts)
         async with _prompting_semaphore:
             await _rate_limiter.acquire()
             with measure_runtime() as process_seconds:
                 response = await prompt_llm(
+                    metadata={"litellm_parent_otel_span": parent_span},
                     model=self.config.model,
                     api_key=settings.llm_azure_api_key,
                     api_base=settings.llm_azure_api_base,

@@ -69,6 +69,36 @@ the path given by `MODEL_PREFILTER`. This needs:
 For local runs, put the file at `.configs/models/high-recall-svm.sklearn` yourself, or point `MODEL_PREFILTER`
 elsewhere.
 
+## Observability
+
+With `OTEL_ENABLED=true`, each robot exports OpenTelemetry traces to Honeycomb over OTLP/HTTP. The ingest key and
+endpoint come from `OTEL_CONFIG`, a JSON blob (see `.configs/.env.example.shared`); Terraform assembles it from the
+`honeycomb_api_key` and `honeycomb_trace_endpoint` variables and injects it as a Container App secret.
+
+Each robot reports to its own Honeycomb dataset, named `destiny-<task>-robot-<env>` — so
+`destiny-query-robot-staging`, `destiny-prefilter-robot-staging` and `destiny-llm-robot-staging`.
+
+One iteration of a robot's loop is one trace, rooted at a `robot.loop` span:
+
+```text
+robot.loop                       robot.task, app.batch.found, app.batch.id, app.reference.count
+├─ POST /robot-enhancement-batches/          poll for work
+├─ GET  <blob reference_storage_url>         fetch the batch's references
+├─ …robot-specific work…
+├─ PUT  <blob result_storage_url>            upload enhancements
+└─ POST /robot-enhancement-batches/{id}/results/
+
+prefilter: ─ prefilter.predict   one per sub-batch; app.batch.index, app.prefilter.included
+llm:       ─ llm.prompt_round    one per prompt; app.llm.label, app.llm.included
+             └─ litellm_request  one per completion (so one per majority vote), with gen_ai.* token counts
+```
+
+The HTTP spans come from httpx auto-instrumentation, which covers the repository client, the blob client and LiteLLM's
+provider calls. LLM spans come from LiteLLM's own `otel` callback, which reuses the tracer provider set up in
+`app/util/telemetry.py`. Idle iterations still emit a `robot.loop` span, carrying `app.batch.found=false`.
+
+LiteLLM prompt span attributes (abstracts + prompts) are suppressed unless `OTEL_CAPTURE_LLM_CONTENT=true`; token counts, cost and model are reported either way.
+
 ## Development notes
 
 ### Build / test
