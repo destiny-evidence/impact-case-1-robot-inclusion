@@ -1,7 +1,7 @@
 """Pre-filter robot using cheap and simple high-recall model."""
 
 import asyncio
-from collections import OrderedDict, defaultdict
+from collections import OrderedDict
 from uuid import UUID
 
 from destiny_sdk.enhancements import AnnotationEnhancement, BooleanAnnotation, Enhancement
@@ -56,23 +56,22 @@ class EnhancementRunner(Runner):
             },
         )
 
-    async def _annotate_reference(
-        self,
-        reference: Reference,
-        label: str,
-        prompt: LLMClassifier,
-    ) -> tuple[BooleanAnnotation, bool]:
-        """Annotate a single reference with one prompt."""
+    async def _annotate_reference(self, reference: Reference) -> list[BooleanAnnotation]:
+        """Run every prompt over one reference, stopping at the first exclusion."""
         title, abstract = get_title_abstract_from_reference(reference)
         text = f"{title or ''}. {abstract or ''}"
+        usable = title is not None and abstract is not None and len(text) >= self.settings.min_text_length
 
-        # Ensure that title and abstract are set, and they are above a minimum length
-        if title is None or abstract is None or len(text) < self.settings.min_text_length:
-            annotation = BooleanAnnotation(scheme=self.settings.annotation_scheme_incl, label=label, value=False, score=None)
-            return annotation, False
-
-        annotation = await prompt.annotate(text=text)
-        return annotation, annotation.value
+        annotations = []
+        for label, prompt in self.prompts.items():
+            if usable:
+                annotation = await prompt.annotate(text=text)
+            else:
+                annotation = BooleanAnnotation(scheme=self.settings.annotation_scheme_incl, label=label, value=False, score=None)
+            annotations.append(annotation)
+            if not annotation.value:
+                break
+        return annotations
 
     async def _loop_task(self) -> bool:
         """Task for single loop of the enhancement runner."""
@@ -83,35 +82,24 @@ class EnhancementRunner(Runner):
             self.loop_logger.debug("No batches available")
             return False
 
-        results: dict[UUID, list[BooleanAnnotation]] = defaultdict(list)
+        results: dict[UUID, list[BooleanAnnotation]] = {}
         failures: dict[UUID, str] = {}
 
-        filtered_references = references
-        for label, prompt in self.prompts.items():
-            # Merge parallel prompts before proceeding with remaining included references to the next prompt
-            annotation_results = await asyncio.gather(
-                *(self._annotate_reference(reference, label, prompt) for reference in filtered_references),
-                return_exceptions=True,
-            )
+        outcomes = await asyncio.gather(
+            *(self._annotate_reference(reference) for reference in references),
+            return_exceptions=True,
+        )
 
-            included = []
-            for reference, outcome in zip(filtered_references, annotation_results, strict=True):
-                if isinstance(outcome, BaseException):
-                    if not isinstance(outcome, PERMANENT_ERRORS):
-                        # Returning nothing lets the lease lapse so the batch is redelivered
-                        # This leans on the repository's lease mechanism to retry a few times
-                        self.loop_logger.error(f"Abandoning batch {batch_info.id} for redelivery: {outcome!r}")
-                        return False
-                    failures[reference.id] = f"{type(outcome).__name__} on {label}: {outcome}"
-                    continue
-
-                annotation, decision = outcome
-                results[reference.id].append(annotation)
-                if decision:
-                    included.append(reference)
-
-            # In the next round, we only continue with included records
-            filtered_references = included
+        for reference, outcome in zip(references, outcomes, strict=True):
+            if isinstance(outcome, BaseException):
+                if not isinstance(outcome, PERMANENT_ERRORS):
+                    # Returning nothing lets the lease lapse so the batch is redelivered
+                    # This leans on the repository's lease mechanism to retry a few times
+                    self.loop_logger.error(f"Abandoning batch {batch_info.id} for redelivery: {outcome!r}")
+                    return False
+                failures[reference.id] = f"{type(outcome).__name__}: {outcome}"
+                continue
+            results[reference.id] = outcome
 
         entries: list[EnhancementResultEntry] = [
             Enhancement(
