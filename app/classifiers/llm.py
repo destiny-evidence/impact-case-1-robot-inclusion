@@ -182,8 +182,8 @@ class LLMClassifier:
                     },
                     max_tokens=self.config.max_tokens,
                     timeout=settings.llm_timeout,
-                    # Retry in the OpenAI client, which is status-aware and honours Retry-After.
-                    num_retries=0,
+                    # Retries belong to the OpenAI client: it knows which statuses are retryable
+                    # and honours Retry-After.
                     max_retries=settings.llm_num_retries,
                 )
 
