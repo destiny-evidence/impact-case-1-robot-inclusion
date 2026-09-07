@@ -42,28 +42,25 @@ class Runner(ABC):
         raise NotImplementedError
 
     @abstractmethod
-    async def _loop_task(self) -> None:
-        """Perform iteration of runner loop."""
+    async def _loop_task(self) -> bool:
+        """Perform iteration of runner loop. Returns True if a batch was processed."""
         raise NotImplementedError
 
     async def _main_loop(self) -> None:
         """Run main loop."""
         loop_logger = self.logger.getChild("loop")
 
-        # On startup, run first loop right away.
-        await self._loop_task()
-
         while True:
             try:
-                if self.settings.interval_seconds > 0:
-                    # Sleep for graceful API use
-                    await asyncio.sleep(self.settings.interval_seconds)
-
-                # Perform unit of work
-                await self._loop_task()
+                did_work = await self._loop_task()
             except Exception as e:
                 loop_logger.error(f"Encountered an error: {e}")
                 loop_logger.exception(e)
+                did_work = False
+
+            # Only idle when there was nothing to do, so a backlog is drained at full speed
+            if not did_work and self.settings.interval_seconds > 0:
+                await asyncio.sleep(self.settings.interval_seconds)
 
     async def stop(self) -> None:
         """Initiate graceful halting procedure."""
