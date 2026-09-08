@@ -75,7 +75,6 @@ variable "extra_env" {
 variable "destiny_repository_url" {
   description = "DESTINY repository API endpoint the robots poll"
   type        = string
-  default     = "https://api.staging.evidence-repository.org"
 }
 
 # LLM
