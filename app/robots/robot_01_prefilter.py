@@ -166,6 +166,7 @@ class EnhancementRunner(Runner):
 
                 # TODO: handle actions (I) and (III)
                 # TODO: handle action (II)
+                # TODO: keep track of which abstract we classified and set derived-by
 
                 documents = [get_title_abstract_from_reference(reference) for reference in batch]
                 texts = [f"{title or ''}. {abstract or ''}" for title, abstract in documents]
