@@ -59,8 +59,8 @@ def instrument(capture_llm_content: bool = False) -> None:
     LiteLLM would put the full prompt and completion on every span, which
     for these robots means every reference abstract.
     """
-    import litellm  # noqa: PLC0415
-    from opentelemetry.instrumentation.httpx import HTTPXClientInstrumentor  # noqa: PLC0415
+    import litellm
+    from opentelemetry.instrumentation.httpx import HTTPXClientInstrumentor
 
     HTTPXClientInstrumentor().instrument()
     litellm.turn_off_message_logging = not capture_llm_content

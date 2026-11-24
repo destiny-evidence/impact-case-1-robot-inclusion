@@ -1,4 +1,3 @@
-from destiny_sdk.visibility import Visibility
 import logging
 from collections.abc import Callable, Generator
 from uuid import UUID
@@ -6,6 +5,8 @@ from uuid import UUID
 from destiny_sdk.enhancements import Enhancement, EnhancementContent, TombstoneEnhancement
 from destiny_sdk.references import Reference
 from destiny_sdk.robots import LinkedRobotError
+from destiny_sdk.visibility import Visibility
+
 from .util import list_or_none
 
 _logger = logging.getLogger(__name__)
@@ -54,9 +55,11 @@ def find_enhancements(
         return
 
     # Build list of superseded enhancements
-    superseded_ids: set[UUID] = set()
-    if not skip_superseded:
-        superseded_ids: set[UUID] = {enhancement.supersedes for enhancement in (reference.enhancements or []) if enhancement.supersedes is not None}
+    superseded_ids: set[UUID]
+    if skip_superseded:
+        superseded_ids = set()
+    else:
+        superseded_ids = {enhancement.supersedes for enhancement in (reference.enhancements or []) if enhancement.supersedes is not None}
 
     for enhancement in reference.enhancements:
         # Skip superseded enhancement

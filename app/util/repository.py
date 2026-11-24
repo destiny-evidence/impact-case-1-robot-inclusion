@@ -6,7 +6,6 @@ from collections.abc import Awaitable, Callable, Sequence
 from typing import TYPE_CHECKING
 from uuid import UUID
 
-import httpx
 from destiny_sdk.client import RobotClient
 from destiny_sdk.enhancements import (
     AbstractContentEnhancement,
@@ -19,6 +18,7 @@ from destiny_sdk.robots import (
     RobotEnhancementBatch,
     RobotEnhancementBatchResult,
 )
+from httpx2 import URL, AsyncClient, Timeout
 from opentelemetry import trace
 
 if TYPE_CHECKING:
@@ -30,7 +30,7 @@ HTTP_TIMEOUT_SECONDS = 600
 
 
 class BatchedResultWriter:
-    def __init__(self, batch_info: RobotEnhancementBatch, client: httpx.AsyncClient, finalise_callback: Callable[[UUID], Awaitable[None]]) -> None:
+    def __init__(self, batch_info: RobotEnhancementBatch, client: AsyncClient, finalise_callback: Callable[[UUID], Awaitable[None]]) -> None:
         self.batch_info = batch_info
         self.target_url = str(batch_info.result_storage_url)
         self.block_ids: list[str] = []
@@ -52,7 +52,7 @@ class BatchedResultWriter:
             file_content += (enhancement.to_jsonl() + "\n").encode("utf-8")
             num_enhancements += 1
 
-        url = httpx.URL(self.target_url).copy_merge_params({"comp": "block", "blockid": block_id})
+        url = URL(self.target_url).copy_merge_params({"comp": "block", "blockid": block_id})
         response = await self.client.put(url, content=file_content, headers={"Content-Length": str(len(file_content))})
         response.raise_for_status()
         self.num_enhancements += num_enhancements
@@ -63,7 +63,7 @@ class BatchedResultWriter:
         latest = "".join(f"<Latest>{block_id}</Latest>" for block_id in self.block_ids)
         body = (f'<?xml version="1.0" encoding="utf-8"?><BlockList>{latest}</BlockList>').encode()
 
-        url = httpx.URL(self.target_url).copy_merge_params({"comp": "blocklist"})
+        url = URL(self.target_url).copy_merge_params({"comp": "blocklist"})
         response = await self.client.put(
             url,
             content=body,
@@ -91,9 +91,9 @@ class Repository:
             settings.robot_secret.get_secret_value(),
             settings.robot_id,
         )
-        self.robot_client.session.timeout = httpx.Timeout(HTTP_TIMEOUT_SECONDS)
+        self.robot_client.session.timeout = Timeout(HTTP_TIMEOUT_SECONDS)
 
-        self.blob_client = httpx.AsyncClient(timeout=HTTP_TIMEOUT_SECONDS)
+        self.blob_client = AsyncClient(timeout=HTTP_TIMEOUT_SECONDS)
 
     async def get_next_batch(
         self,

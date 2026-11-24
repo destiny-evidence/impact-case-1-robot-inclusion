@@ -1,7 +1,7 @@
 import logging
 import re
 from pathlib import Path
-from typing import TYPE_CHECKING, Any
+from typing import TYPE_CHECKING, Any, cast
 
 import joblib
 import numpy as np
@@ -34,9 +34,9 @@ class SklearnClassifier:
     def predict_proba(self, X: list[str]) -> np.ndarray:
         y_pred: np.ndarray
         if hasattr(self.model_, "predict_proba"):
-            y_pred = self.model_.predict_proba(preprocess_text(X))[:, 1]
+            y_pred = cast("np.ndarray", self.model_.predict_proba(preprocess_text(X))[:, 1])
         else:
-            y_pred = self.model_.predict(preprocess_text(X))
+            y_pred = cast("np.ndarray", self.model_.predict(preprocess_text(X)))
             if len(y_pred.shape) > 1:
                 y_pred = y_pred[:, 1]
 

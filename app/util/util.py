@@ -1,8 +1,8 @@
 import asyncio
 import time
-from collections.abc import Generator
+from collections.abc import Generator, Hashable, Iterable
 from contextlib import contextmanager
-from typing import overload, Hashable, Iterable
+from typing import overload
 
 
 @contextmanager
@@ -54,18 +54,15 @@ def gather_dict[T](lst: Iterable[tuple[str, T]]) -> dict[str, list[T]]:
 
 
 @overload
-def list_or_none(obj: None) -> None:
-    ...
+def list_or_none(obj: None) -> None: ...
 
 
 @overload
-def list_or_none[T: Hashable](obj: list[T]) -> list[T] | None:
-    ...
+def list_or_none[T: Hashable](obj: list[T]) -> list[T] | None: ...
 
 
 @overload
-def list_or_none[T: Hashable](obj: T) -> list[T] | None:
-    ...
+def list_or_none[T: Hashable](obj: T) -> list[T] | None: ...
 
 
 def list_or_none[T: Hashable](obj: T | list[T] | None) -> list[T] | None:

@@ -73,9 +73,9 @@ def test_loop_task_span_records_failure() -> None:
 
 def test_instrument_suppresses_llm_message_content() -> None:
     """LiteLLM's per-request kill switch is set, so prompts stay out of spans."""
-    import litellm  # noqa: PLC0415
+    import litellm
 
-    from app.util.telemetry import instrument  # noqa: PLC0415
+    from app.util.telemetry import instrument
 
     instrument(capture_llm_content=False)
     assert litellm.turn_off_message_logging is True
@@ -89,8 +89,8 @@ def test_instrument_suppresses_llm_message_content() -> None:
 
 def test_configure_telemetry_names_the_service() -> None:
     """service.name is `destiny-<task>-robot-<env>`, and a second call is a no-op."""
-    from app.util.config import OTelConfig  # noqa: PLC0415
-    from app.util.telemetry import configure_telemetry  # noqa: PLC0415
+    from app.util.config import OTelConfig
+    from app.util.telemetry import configure_telemetry
 
     if isinstance(trace.get_tracer_provider(), TracerProvider):
         pytest.skip("a tracer provider is already installed globally; configure_telemetry is set-once")

@@ -17,8 +17,8 @@ if TYPE_CHECKING:
 class HuggingfaceClassifier:
     def __init__(self, path: Path) -> None:
 
-        from sklearn.exceptions import UndefinedMetricWarning  # noqa: PLC0415
-        from transformers import AutoModelForSequenceClassification, AutoTokenizer  # noqa: PLC0415
+        from sklearn.exceptions import UndefinedMetricWarning
+        from transformers import AutoModelForSequenceClassification, AutoTokenizer
 
         self.logger = logging.getLogger("classify.inout.transformer")
         warnings.filterwarnings("ignore", category=UndefinedMetricWarning)
@@ -35,8 +35,8 @@ class HuggingfaceClassifier:
         self.tokenizer_ = AutoTokenizer.from_pretrained(self.model_name, model_max_length=self.model_max_length, cache_dir=path / "tokenizers")
 
     def tokenize(self, texts: list[str], labels: np.ndarray | None) -> Dataset:
-        from datasets import Dataset  # noqa: PLC0415
-        from torch import long, tensor  # noqa: PLC0415
+        from datasets import Dataset
+        from torch import long, tensor
 
         params: dict[str, Any] = {"text": texts}
         if labels is not None:
@@ -49,7 +49,7 @@ class HuggingfaceClassifier:
         return dataset.remove_columns("text")
 
     def predict_proba(self, X: list[str]) -> np.ndarray:
-        import torch  # noqa: PLC0415
+        import torch
 
         if self.model_ is None:
             raise RuntimeError("Model must be trained before predicting!")
