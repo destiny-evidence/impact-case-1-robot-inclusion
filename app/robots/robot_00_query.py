@@ -24,13 +24,13 @@ class EnhancementRunner(Runner):
     """
     Runner for setting the climate and health query flag (top-level community scope).
 
-    Handles the following sub-cases:
-       1) No existing annotation         and search        matches -> create inclusion annotation
-       2) No existing annotation         and search does not match -> ignore (also not covered by query)
-       3)    Existing annotation (True)  and search        matches -> ignore unless we want to superseed with another version
-       4)    Existing annotation (False) and search        matches -> supersede with True annotation
-       5)    Existing annotation (True)  and search does not match -> Supersede annotation with `TombstoneEnhancement`
-       6)    Existing annotation (False) and search does not match -> Do nothing (or add `TombstoneEnhancement` if not already present)
+    Handles the following sub-cases in two separate run modes:
+         [match] 1) No existing annotation         and search        matches -> create inclusion annotation
+        [ignore] 2) No existing annotation         and search does not match -> ignore (also not covered by query)
+         [match] 3)    Existing annotation (True)  and search        matches -> ignore unless we want to superseed with another version
+         [match] 4)    Existing annotation (False) and search        matches -> supersede with True annotation
+       [unmatch] 5)    Existing annotation (True)  and search does not match -> Supersede annotation with `TombstoneEnhancement`
+       [unmatch] 6)    Existing annotation (False) and search does not match -> Do nothing (or add `TombstoneEnhancement` if not already present)
     """
 
     NAME = "Climate and health (IC1) query robot"

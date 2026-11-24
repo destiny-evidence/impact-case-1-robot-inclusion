@@ -161,7 +161,7 @@ class Settings(BaseSettings):
 
     # Files for search query, pre-filter model, and LLM prompts
     search_query: Path = Field(default=Path(".configs/search-query.txt"), description="Path to file containing search query")
-    model_prefilter: Path = Field(default=Path(".configs/models/high-recall-svm.sklearn"), description="Path to serialised sklearn model")
+    model_prefilter: Path = Field(default=Path(".configs/models/high-recall-svm.sklearn"), description="Path to serialised model (type determined by suffix)")
     prompt_high_recall: Path = Field(default=Path(".configs/prompts/high-recall.txt"), description="Path to prompt/model config for high-recall LLM")
     prompt_balanced: Path = Field(default=Path(".configs/prompts/balanced.txt"), description="Path to prompt/model config for balanced LLM")
     prompt_high_precision: Path = Field(default=Path(".configs/prompts/high-precision.txt"), description="Path to prompt/model config for high-precision LLM")

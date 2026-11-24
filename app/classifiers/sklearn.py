@@ -5,6 +5,7 @@ from typing import TYPE_CHECKING, Any, cast
 
 import joblib
 import numpy as np
+from .util import AbstractClassifier
 
 if TYPE_CHECKING:
     from sklearn.pipeline import Pipeline
@@ -18,8 +19,9 @@ def preprocess_text(texts: list[str]) -> list[str]:
     return [NOALPH.sub(" ", text.lower()) for text in texts]
 
 
-class SklearnClassifier:
+class SklearnClassifier(AbstractClassifier):
     def __init__(self, path: Path) -> None:
+        super().__init__(path=path)
         logger.info(f"Loading trained model from {path}")
 
         info = joblib.load(path)

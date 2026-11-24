@@ -7,6 +7,7 @@ import logging
 import warnings
 from pathlib import Path
 from typing import TYPE_CHECKING, Any
+from .util import AbstractClassifier
 
 import numpy as np
 
@@ -14,8 +15,9 @@ if TYPE_CHECKING:
     from datasets import Dataset
 
 
-class HuggingfaceClassifier:
+class HuggingfaceClassifier(AbstractClassifier):
     def __init__(self, path: Path) -> None:
+        super().__init__(path=path)
 
         from sklearn.exceptions import UndefinedMetricWarning
         from transformers import AutoModelForSequenceClassification, AutoTokenizer
