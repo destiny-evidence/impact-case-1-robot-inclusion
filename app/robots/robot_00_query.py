@@ -2,10 +2,11 @@
 
 import re
 from enum import Enum
-from typing import cast
+from functools import cached_property
+from typing import cast, Callable
 from uuid import UUID
 
-from destiny_sdk.enhancements import AnnotationEnhancement, BooleanAnnotation
+from destiny_sdk.enhancements import AnnotationEnhancement, BooleanAnnotation, Enhancement
 from destiny_sdk.robots import RobotAutomationIn
 
 from app.util import Runner
@@ -98,6 +99,38 @@ class EnhancementRunner(Runner):
             query=match_query if self.mode == EnhancementRunnerMode.match else unmatch_query,
         )
 
+    @cached_property
+    def enhancement_filter(self) -> dict[str, Callable[[Enhancement], bool]]:
+        return {
+            # Find existing enhancements with query label
+            "incl": lambda e: (
+                e.source == self.NAME
+                and isinstance(e.content, AnnotationEnhancement)
+                and any(
+                (
+                    isinstance(annotation, BooleanAnnotation)
+                    and annotation.scheme == self.settings.annotation_scheme_query
+                    and annotation.label == self.settings.annotation_label_query
+                    and annotation.value == True  # noqa: E712
+                    for annotation in e.content.annotations
+                ),
+            )
+            ),
+            "excl": lambda e: (
+                e.source == self.NAME
+                and isinstance(e.content, AnnotationEnhancement)
+                and any(
+                (
+                    isinstance(annotation, BooleanAnnotation)
+                    and annotation.scheme == self.settings.annotation_scheme_query
+                    and annotation.label == self.settings.annotation_label_query
+                    and annotation.value == False  # noqa: E712
+                    for annotation in e.content.annotations
+                ),
+            )
+            ),
+        }
+
     async def _loop_task(self) -> bool:
         """Task for single loop of the enhancement runner."""
         # Poll for approved requests for enhancements
@@ -121,42 +154,7 @@ class EnhancementRunner(Runner):
         # Prepare enhancements
         for reference in references:
             try:
-                existing_enhancements = gather_dict(
-                    find_enhancements(
-                        reference,
-                        {
-                            # Find existing enhancements with query label
-                            "incl": lambda e: (
-                                e.source == self.NAME
-                                and isinstance(e.content, AnnotationEnhancement)
-                                and any(
-                                    (
-                                        isinstance(annotation, BooleanAnnotation)
-                                        and annotation.scheme == self.settings.annotation_scheme_query
-                                        and annotation.label == self.settings.annotation_label_query
-                                        and annotation.value == True  # noqa: E712
-                                        for annotation in e.content.annotations
-                                    ),
-                                )
-                            ),
-                            "excl": lambda e: (
-                                e.source == self.NAME
-                                and isinstance(e.content, AnnotationEnhancement)
-                                and any(
-                                    (
-                                        isinstance(annotation, BooleanAnnotation)
-                                        and annotation.scheme == self.settings.annotation_scheme_query
-                                        and annotation.label == self.settings.annotation_label_query
-                                        and annotation.value == False  # noqa: E712
-                                        for annotation in e.content.annotations
-                                    ),
-                                )
-                            ),
-                        },
-                        check_reference_id=True,
-                        skip_superseded=True,
-                    ),
-                )
+                existing_enhancements = gather_dict(find_enhancements(reference, self.enhancement_filter, check_reference_id=True, skip_superseded=True))
 
                 enhancement = AnnotationEnhancement(
                     annotations=[
