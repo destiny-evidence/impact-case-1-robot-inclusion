@@ -38,21 +38,21 @@ class EnhancementRunner(Runner):
         2.2.3)     no prefilter annotation
 
         3.     Abstract unchanged -> query annotation changed
-        3.1)     True -> True                             (Note: if query annotation changed, this would logically be True -> False, matching 1.1)
+        3.1)     True -> True
         3.1.1)     prefilter annotation exists (True)
         3.1.2)     prefilter annotation exists (False)
         3.1.3)     no prefilter annotation
-        3.2)     False -> False                           (Note: if query annotation changed, this would logically be False -> True, matching 1.2)
+        3.2)     False -> False
         3.2.1)     prefilter annotation exists (True)
         3.2.2)     prefilter annotation exists (False)
         3.2.3)     no prefilter annotation
 
         4.     Abstract unchanged -> query annotation unchanged
-        4.1)     True -> True                            (Note: if query annotation unchanged, this would logically be True -> True, matching 2.1)
+        4.1)     True -> True
         4.1.1)     prefilter annotation exists (True)
         4.1.2)     prefilter annotation exists (False)
         4.1.3)     no prefilter annotation
-        4.2)     False -> False                          (Note: if query annotation unchanged, this would logically be False -> False, matching 2.2)
+        4.2)     False -> False
         4.2.1)     prefilter annotation exists (True)
         4.2.2)     prefilter annotation exists (False)
         4.2.3)     no prefilter annotation
