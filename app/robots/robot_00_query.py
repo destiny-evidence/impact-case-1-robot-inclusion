@@ -6,7 +6,7 @@ from functools import cached_property
 from typing import cast, Callable
 from uuid import UUID
 
-from destiny_sdk.enhancements import AnnotationEnhancement, BooleanAnnotation, Enhancement
+from destiny_sdk.enhancements import AnnotationEnhancement, BooleanAnnotation, Enhancement, AbstractContentEnhancement, BibliographicMetadataEnhancement
 from destiny_sdk.robots import RobotAutomationIn
 
 from app.util import Runner
@@ -28,7 +28,7 @@ class EnhancementRunner(Runner):
     Handles the following sub-cases in two separate run modes:
          [match] 1) No existing annotation         and search        matches -> create inclusion annotation
         [ignore] 2) No existing annotation         and search does not match -> ignore (also not covered by query)
-         [match] 3)    Existing annotation (True)  and search        matches -> ignore unless we want to superseed with another version
+         [match] 3)    Existing annotation (True)  and search        matches -> Supersede with updated "derived-by" information
          [match] 4)    Existing annotation (False) and search        matches -> supersede with True annotation
        [unmatch] 5)    Existing annotation (True)  and search does not match -> Supersede annotation with `TombstoneEnhancement`
        [unmatch] 6)    Existing annotation (False) and search does not match -> Do nothing (or add `TombstoneEnhancement` if not already present)
@@ -129,6 +129,9 @@ class EnhancementRunner(Runner):
                 ),
             )
             ),
+            # "ta": lambda e: isinstance(e.content, AbstractContentEnhancement) or isinstance(e.content, BibliographicMetadataEnhancement),
+            # "title": lambda e: isinstance(e.content, BibliographicMetadataEnhancement) and e.content.title is not None,
+            "abstract": lambda e: isinstance(e.content, AbstractContentEnhancement) and e.content.abstract is not None,
         }
 
     async def _loop_task(self) -> bool:
@@ -165,21 +168,22 @@ class EnhancementRunner(Runner):
                         )
                     ],
                 )
+                derived_ids = [cast(UUID, abstract.id) for abstract in existing_enhancements.get("abstract", [])]
 
                 # 1) No existing annotation and search matches -> create inclusion annotation
                 if self.mode == EnhancementRunnerMode.match and not existing_enhancements.get("incl") and not existing_enhancements.get("excl"):
-                    results.enhance(reference_id=reference.id, content=enhancement)
+                    results.enhance(reference_id=reference.id, content=enhancement, derived_from=derived_ids)
 
                 # 2) No existing annotation and search does not match
                 #   -> ignore: not covered by either query
 
-                # 3) Existing annotation (True)  and search matches -> ignore unless we want to superseed with another version
+                # 3) Existing annotation (True) and search matches -> update derived_from
                 elif self.mode == EnhancementRunnerMode.match and len(existing_enhancements.get("incl", [])) == 1 and not existing_enhancements.get("excl"):
-                    results.enhance(reference_id=reference.id, content=enhancement, supersedes=existing_enhancements["incl"][0].id)
+                    results.enhance(reference_id=reference.id, content=enhancement, supersedes=existing_enhancements["incl"][0].id, derived_from=derived_ids)
 
                 # 4) Existing annotation (False) and search matches -> supersede with True annotation
                 elif self.mode == EnhancementRunnerMode.match and not existing_enhancements.get("incl") and len(existing_enhancements.get("excl", [])) == 1:
-                    results.enhance(reference_id=reference.id, content=enhancement, supersedes=existing_enhancements["excl"][0].id)
+                    results.enhance(reference_id=reference.id, content=enhancement, supersedes=existing_enhancements["excl"][0].id, derived_from=derived_ids)
 
                 # 5) Existing annotation (True) and search does not match -> Supersede annotation with `TombstoneEnhancement`
                 elif self.mode == EnhancementRunnerMode.unmatch and len(existing_enhancements.get("incl", [])) == 1 and not existing_enhancements.get("excl"):

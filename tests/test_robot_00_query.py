@@ -11,7 +11,7 @@ from destiny_sdk.enhancements import AnnotationEnhancement, Enhancement, Tombsto
 from destiny_sdk.robots import LinkedRobotError
 
 from app.robots.robot_00_query import EnhancementRunner, EnhancementRunnerMode
-from tests.conftest import DEFAULT_QUERY_TEXT, FakeRepository, InstallSettings, MakeAnnotation, MakeReference, MakeSettings
+from tests.conftest import DEFAULT_QUERY_TEXT, FakeRepository, InstallSettings, MakeAbstract, MakeAnnotation, MakeReference, MakeSettings
 
 if TYPE_CHECKING:
     from collections.abc import Iterator
@@ -144,6 +144,7 @@ def test_case1_match_no_existing_annotation_creates_inclusion(
     assert enhancement.source == ROBOT_NAME
     assert enhancement.robot_version == runner.settings.robot_version
     assert enhancement.supersedes is None
+    assert enhancement.derived_from is None  # no abstract enhancements on the reference
     assert isinstance(enhancement.content, AnnotationEnhancement)
     (annotation,) = enhancement.content.annotations
     assert annotation.scheme == runner.settings.annotation_scheme_query
@@ -166,11 +167,14 @@ def test_match_supersedes_existing_annotation(
     install_settings: InstallSettings,
     make_reference: MakeReference,
     make_annotation: MakeAnnotation,
+    make_abstract: MakeAbstract,
     mode: EnhancementRunnerMode,
     existing: bool,
 ) -> None:
     runner = _make_runner(make_settings, install_settings, mode)
     reference, (old,) = _reference_with(make_reference, make_annotation, values=[existing])
+    abstract = make_abstract(reference.id)
+    reference.enhancements = [*reference.enhancements, abstract]
     fake_runner_dependencies.queue_batch([reference])
 
     did_work, submissions = _run_loop(runner, fake_runner_dependencies)
@@ -179,8 +183,52 @@ def test_match_supersedes_existing_annotation(
     (enhancement,) = [e for e in submissions if isinstance(e, Enhancement)]
     assert enhancement.reference_id == reference.id
     assert enhancement.supersedes == old.id
+    assert enhancement.derived_from == [abstract.id]  # derived-by tracks the abstracts behind the match
     (annotation,) = enhancement.content.annotations
     assert annotation.value is True
+
+
+def test_match_derives_from_all_existing_abstracts(
+    fake_runner_dependencies: FakeRepository,
+    make_settings: MakeSettings,
+    install_settings: InstallSettings,
+    make_reference: MakeReference,
+    make_abstract: MakeAbstract,
+) -> None:
+    """All non-superseded abstract enhancements on the reference land in `derived_from`."""
+    runner = _make_runner(make_settings, install_settings, EnhancementRunnerMode.match)
+    reference = make_reference()
+    abstracts = [make_abstract(reference.id), make_abstract(reference.id, abstract="Another abstract.")]
+    reference.enhancements = abstracts
+    fake_runner_dependencies.queue_batch([reference])
+
+    _did_work, submissions = _run_loop(runner, fake_runner_dependencies)
+
+    (enhancement,) = [e for e in submissions if isinstance(e, Enhancement)]
+    assert enhancement.supersedes is None  # case 1: no existing annotation yet
+    assert enhancement.derived_from == [a.id for a in abstracts]
+
+
+def test_match_ignores_other_enhancements_when_deriving(
+    fake_runner_dependencies: FakeRepository,
+    make_settings: MakeSettings,
+    install_settings: InstallSettings,
+    make_reference: MakeReference,
+    make_annotation: MakeAnnotation,
+    make_abstract: MakeAbstract,
+) -> None:
+    """Only `AbstractContentEnhancement`s count as derivation sources, not annotations."""
+    runner = _make_runner(make_settings, install_settings, EnhancementRunnerMode.match)
+    reference = make_reference()
+    foreign = make_annotation(reference.id, source="some-other-robot", value=True)
+    abstract = make_abstract(reference.id)
+    reference.enhancements = [foreign, abstract]
+    fake_runner_dependencies.queue_batch([reference])
+
+    _did_work, submissions = _run_loop(runner, fake_runner_dependencies)
+
+    (enhancement,) = [e for e in submissions if isinstance(e, Enhancement)]
+    assert enhancement.derived_from == [abstract.id]
 
 
 @pytest.mark.parametrize(

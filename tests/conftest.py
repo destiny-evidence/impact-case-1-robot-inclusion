@@ -16,7 +16,7 @@ from typing import TYPE_CHECKING
 from uuid import UUID, uuid4
 
 import pytest
-from destiny_sdk.enhancements import AnnotationEnhancement, BooleanAnnotation, Enhancement
+from destiny_sdk.enhancements import AbstractContentEnhancement, AbstractProcessType, AnnotationEnhancement, BooleanAnnotation, Enhancement
 from destiny_sdk.references import Reference
 from destiny_sdk.robots import EnhancementResultEntry, RobotEnhancementBatch
 from destiny_sdk.visibility import Visibility
@@ -34,6 +34,7 @@ MakeSettings = Callable[..., "Settings"]
 InstallSettings = Callable[["Settings"], "Settings"]
 MakeReference = Callable[..., Reference]
 MakeAnnotation = Callable[..., Enhancement]
+MakeAbstract = Callable[..., Enhancement]
 
 # Settings fields the fixtures below pin explicitly; strip the matching env vars so
 # values from the developer shell or CI cannot leak into `Settings(_env_file=None)`.
@@ -189,6 +190,36 @@ def make_annotation():
                     ),
                 ],
             ),
+        )
+
+    return _make
+
+
+@pytest.fixture
+def make_abstract():
+    """
+    Build abstract `Enhancement` objects (the sources the query robot derives from).
+
+    The robot's `abstract` filter matches any `AbstractContentEnhancement` on the
+    reference regardless of `source`, so the default source is just a stand-in for
+    an upstream content provider.
+    """
+
+    def _make(
+        reference_id: UUID,
+        *,
+        source: str = "ods",
+        abstract: str = "Air pollution and health outcomes.",
+        process: AbstractProcessType = AbstractProcessType.OTHER,
+        enhancement_id: UUID | None = None,
+    ) -> Enhancement:
+        return Enhancement(
+            id=enhancement_id if enhancement_id is not None else uuid4(),
+            reference_id=reference_id,
+            source=source,
+            visibility=Visibility.PUBLIC,
+            robot_version="0.0.0-test",
+            content=AbstractContentEnhancement(process=process, abstract=abstract),
         )
 
     return _make
