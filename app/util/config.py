@@ -213,6 +213,29 @@ class Settings(BaseSettings):
         description="Defines the value to use for BooleanAnnotation.label for high-precision LLM decisions",
     )
 
+    robot_name_query: str = "Climate and health (IC1) query robot"
+    robot_name_prefilter: str = "Climate and health (IC1) pre-filter robot"
+    robot_name_llm: str = "Climate and health (IC1) LLM 3-level inclusion robot"
+
+    max_failure_rate_query: float | None = Field(
+        default=None,
+        gt=0.0,
+        lt=1.0,
+        description="Proportion of references with an error before failing the entire batch in query runner",
+    )
+    max_failure_rate_prefilter: float | None = Field(
+        default=None,
+        gt=0.0,
+        lt=1.0,
+        description="Proportion of references with an error before failing the entire batch in pre-filter runner",
+    )
+    max_failure_rate_llm: float | None = Field(
+        default=None,
+        gt=0.0,
+        lt=1.0,
+        description="Proportion of references with an error before failing the entire batch in LLM runner",
+    )
+
     @model_validator(mode="after")
     def _warn_missing_otel_api_key(self) -> "Settings":
         if self.otel_enabled and not (self.otel_config and self.otel_config.api_key):

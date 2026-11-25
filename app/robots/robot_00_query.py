@@ -1,12 +1,13 @@
 """Task for single loop of the enhancement runner."""
 
 import re
+from collections.abc import Callable
 from enum import Enum
 from functools import cached_property
-from typing import cast, Callable
+from typing import cast
 from uuid import UUID
 
-from destiny_sdk.enhancements import AnnotationEnhancement, BooleanAnnotation, Enhancement, AbstractContentEnhancement, BibliographicMetadataEnhancement
+from destiny_sdk.enhancements import AbstractContentEnhancement, AnnotationEnhancement, BooleanAnnotation, Enhancement
 from destiny_sdk.robots import RobotAutomationIn
 
 from app.util import Runner
@@ -33,10 +34,8 @@ class EnhancementRunner(Runner):
          [match] 4.1)  Existing annotation (Tombstone) and search        matches -> supersede with True annotation
        [unmatch] 5)    Existing annotation (True)      and search does not match -> Supersede annotation with `TombstoneEnhancement`
        [unmatch] 6)    Existing annotation (False)     and search does not match -> Supersede with `TombstoneEnhancement`
-       [unmatch] 6.1)  Existing annotation (Tombstone) and search does not match -> Do nothing
+        [ignore] 6.1)  Existing annotation (Tombstone) and search does not match -> Do nothing
     """
-
-    NAME = "Climate and health (IC1) query robot"
 
     def __init__(self, name: str, mode: EnhancementRunnerMode) -> None:
         super().__init__(name=name)
@@ -77,8 +76,8 @@ class EnhancementRunner(Runner):
                             "query": {"term": {"changeset.enhancements.content.enhancement_type": "abstract"}},
                         }
                     },
-                    # Document currently has the annotation
-                    {"term": {"enhancements.content.annotations.scheme": self.settings.annotation_scheme_query}},
+                    # Document currently has this robot's annotation
+                    {"term": {"enhancements.source": self.settings.robot_name_query}},
                     {"term": {"enhancements.content.annotations.label": self.settings.annotation_label_query}},
                 ],
                 "must_not": [
@@ -106,7 +105,7 @@ class EnhancementRunner(Runner):
         return {
             # Find existing enhancements with query label
             "incl": lambda e: (
-                e.source == self.NAME
+                e.source == self.settings.robot_name_query
                 and isinstance(e.content, AnnotationEnhancement)
                 and any(
                     (
@@ -119,7 +118,7 @@ class EnhancementRunner(Runner):
                 )
             ),
             "excl": lambda e: (
-                e.source == self.NAME
+                e.source == self.settings.robot_name_query
                 and isinstance(e.content, AnnotationEnhancement)
                 and any(
                     (
@@ -147,7 +146,7 @@ class EnhancementRunner(Runner):
 
         # Set up result handler
         results = ResultHandler(
-            robot_name=self.NAME,
+            robot_name=self.settings.robot_name_query,
             robot_version=self.settings.robot_version,
             enhancement_visibility=self.settings.enhancement_visibility,
             max_batch_failure_rate=self.settings.max_failure_rate_query,
@@ -170,7 +169,7 @@ class EnhancementRunner(Runner):
                         )
                     ],
                 )
-                derived_ids = [cast(UUID, abstract.id) for abstract in existing_enhancements.get("abstract", [])]
+                derived_ids = [cast("UUID", abstract.id) for abstract in existing_enhancements.get("abstract", [])]
 
                 # 1) No existing annotation and search matches -> create inclusion annotation
                 if self.mode == EnhancementRunnerMode.match and not existing_enhancements.get("incl") and not existing_enhancements.get("excl"):

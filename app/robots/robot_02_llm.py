@@ -20,8 +20,6 @@ PERMANENT_ERRORS = (BadRequestError, PromptError)
 class EnhancementRunner(Runner):
     """Runner for pre-filtering with a cheap and simple high-recall model."""
 
-    NAME = "Climate and health (IC1) LLM 3-level inclusion robot"
-
     def __init__(self, name: str) -> None:
         super().__init__(name=name)
 
@@ -117,7 +115,7 @@ class EnhancementRunner(Runner):
         entries: list[EnhancementResultEntry] = [
             Enhancement(
                 reference_id=reference_id,
-                source=self.NAME,
+                source=self.settings.robot_name_llm,
                 visibility=self.settings.enhancement_visibility,
                 robot_version=self.settings.robot_version,
                 content=AnnotationEnhancement(annotations=annotations),

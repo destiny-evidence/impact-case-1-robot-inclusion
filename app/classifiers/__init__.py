@@ -16,10 +16,10 @@ def load_classifier(path: Path) -> Classifier:
 
 
 __all__ = [
+    "Classifier",
     "LLMClassifier",
     "PromptConfig",
     "SklearnClassifier",
     "estimate_prompt_tokens",
-    "Classifier",
     "load_classifier",
 ]

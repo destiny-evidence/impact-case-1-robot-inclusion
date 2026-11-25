@@ -5,6 +5,7 @@ from typing import TYPE_CHECKING, Any, cast
 
 import joblib
 import numpy as np
+
 from .util import AbstractClassifier
 
 if TYPE_CHECKING:

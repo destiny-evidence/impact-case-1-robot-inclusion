@@ -100,7 +100,7 @@ class PromptConfig(BaseModel):
     def from_file(cls, path: Path) -> "PromptConfig":
         with Path.open(path) as fp:
             splits = fp.read().split(CONFIG_DIVISION, maxsplit=1)
-            if len(splits) != 2:  # noqa: PLR2004
+            if len(splits) != 2:
                 raise RuntimeError("Looks like the prompt config is not split into two parts by the correct division")
             conf, prompt = splits
             data = yaml.safe_load(conf.strip())

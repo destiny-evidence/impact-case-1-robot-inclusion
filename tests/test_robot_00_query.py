@@ -11,6 +11,7 @@ from destiny_sdk.enhancements import AnnotationEnhancement, Enhancement, Tombsto
 from destiny_sdk.robots import LinkedRobotError
 
 from app.robots.robot_00_query import EnhancementRunner, EnhancementRunnerMode
+from app.util.config import get_settings
 from tests.conftest import DEFAULT_QUERY_TEXT, FakeRepository, InstallSettings, MakeAbstract, MakeAnnotation, MakeReference, MakeSettings
 
 if TYPE_CHECKING:
@@ -19,7 +20,7 @@ if TYPE_CHECKING:
     from destiny_sdk.references import Reference
     from destiny_sdk.robots import EnhancementResultEntry
 
-ROBOT_NAME = EnhancementRunner.NAME
+ROBOT_NAME = get_settings().robot_name_query
 
 
 def _make_runner(
@@ -99,8 +100,8 @@ def test_automation_query_unmatch(
     must_not = query["bool"]["must_not"]
     # Loop-breaker: only fires when an abstract actually changed
     assert must[0]["nested"]["query"]["term"]["changeset.enhancements.content.enhancement_type"] == "abstract"
-    # Document currently carries the query annotation
-    assert must[1] == {"term": {"enhancements.content.annotations.scheme": runner.settings.annotation_scheme_query}}
+    # Document currently carries this robot's annotation
+    assert must[1] == {"term": {"enhancements.source": runner.settings.robot_name_query}}
     assert must[2] == {"term": {"enhancements.content.annotations.label": runner.settings.annotation_label_query}}
     # The updated abstract no longer matches the search query
     assert must_not[0]["simple_query_string"]["query"] == DEFAULT_QUERY_TEXT
