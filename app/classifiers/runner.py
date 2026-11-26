@@ -13,6 +13,7 @@ from destiny_sdk.enhancements import (
     TombstoneEnhancement,
 )
 from destiny_sdk.references import Reference
+from destiny_sdk.robots import RobotAutomationIn
 
 from app.classifiers import load_classifier
 from app.util.enhancements import ResultHandler, find_enhancements
@@ -69,9 +70,17 @@ class ClassificationRunner(Runner, ABC):
     @abstractmethod
     def self_source(self) -> str: ...
 
-    @property
-    @abstractmethod
-    def batch_size(self) -> str: ...
+    def _automation_query(self) -> RobotAutomationIn:
+        """Trigger whenever an enhancement from the parent robot changes on a reference."""
+        return RobotAutomationIn(
+            robot_id=self.settings.robot_id,
+            query={
+                "nested": {
+                    "path": "changeset.enhancements",
+                    "query": {"term": {"changeset.enhancements.source": self.parent_source}},
+                }
+            },
+        )
 
     @abstractmethod
     async def _handle_classification(self, results: ResultHandler, needs_classification: list[tuple[UUID, dict[str, list[Enhancement]]]]) -> None:
@@ -229,7 +238,8 @@ class ClassificationRunner(Runner, ABC):
             return None
         return text
 
-    def _enhancement_context(self, enhancements: dict[str, list[Enhancement]]) -> dict[str, list[UUID] | UUID | None]:
+    @classmethod
+    def _enhancement_context(cls, enhancements: dict[str, list[Enhancement]]) -> dict[str, list[UUID] | UUID | None]:
         return {
             "derived_from": [
                 cast("UUID", enhancements["parent-incl"][0].id),

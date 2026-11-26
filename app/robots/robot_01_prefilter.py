@@ -44,7 +44,7 @@ class EnhancementRunner(ClassificationRunner):
                                     )
                                 ],
                             ),
-                            **self._enhancement_context(enhancements),
+                            **self._enhancement_context(enhancements),  # type: ignore[arg-type]
                         )
                 except Exception as e:  # noqa: BLE001
                     for reference_id, _enhancements in needs_classification:

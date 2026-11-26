@@ -78,5 +78,5 @@ class EnhancementRunner(ClassificationRunner):
                 results.enhance(
                     reference_id=reference_id,
                     content=AnnotationEnhancement(annotations=outcomes),
-                    **self._enhancement_context(enhancements),
+                    **self._enhancement_context(enhancements),  # type: ignore[arg-type]
                 )
