@@ -75,10 +75,22 @@ class ClassificationRunner(Runner, ABC):
         return RobotAutomationIn(
             robot_id=self.settings.robot_id,
             query={
-                "nested": {
-                    "path": "changeset.enhancements",
-                    "query": {"term": {"changeset.enhancements.source": self.parent_source}},
-                }
+                "bool": {
+                    "must": [
+                        {
+                            "nested": {
+                                "path": "changeset.enhancements",
+                                "query": {
+                                    "bool": {
+                                        "must": [
+                                            {"term": {"changeset.enhancements.source": self.parent_source}},
+                                        ]
+                                    }
+                                },
+                            }
+                        }
+                    ]
+                },
             },
         )
 
