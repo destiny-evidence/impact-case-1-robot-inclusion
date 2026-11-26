@@ -100,7 +100,7 @@ class PromptConfig(BaseModel):
     def from_file(cls, path: Path) -> "PromptConfig":
         with Path.open(path) as fp:
             splits = fp.read().split(CONFIG_DIVISION, maxsplit=1)
-            if len(splits) != 2:  # noqa: PLR2004
+            if len(splits) != 2:
                 raise RuntimeError("Looks like the prompt config is not split into two parts by the correct division")
             conf, prompt = splits
             data = yaml.safe_load(conf.strip())
@@ -255,7 +255,7 @@ class LLMClassifier:
         if getattr(msg, "content", None) is not None:
             response_content = cast("str", msg.content)
         elif getattr(msg, "tool_calls", None):
-            response_content = msg.tool_calls[0].function.arguments  # type: ignore[index, union-attr]
+            response_content = msg.tool_calls[0].function.arguments  # type: ignore[index]
         else:
             raise BadResponseError(f"Unclear response! {usage_note}\n{msg}")
         return response_content, num_input_tokens, num_output_tokens, num_cached_tokens

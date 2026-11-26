@@ -1,10 +1,12 @@
 import logging
 import re
 from pathlib import Path
-from typing import TYPE_CHECKING, Any
+from typing import TYPE_CHECKING, Any, cast
 
 import joblib
 import numpy as np
+
+from .util import AbstractClassifier
 
 if TYPE_CHECKING:
     from sklearn.pipeline import Pipeline
@@ -18,8 +20,9 @@ def preprocess_text(texts: list[str]) -> list[str]:
     return [NOALPH.sub(" ", text.lower()) for text in texts]
 
 
-class SklearnClassifier:
+class SklearnClassifier(AbstractClassifier):
     def __init__(self, path: Path) -> None:
+        super().__init__(path=path)
         logger.info(f"Loading trained model from {path}")
 
         info = joblib.load(path)
@@ -34,9 +37,9 @@ class SklearnClassifier:
     def predict_proba(self, X: list[str]) -> np.ndarray:
         y_pred: np.ndarray
         if hasattr(self.model_, "predict_proba"):
-            y_pred = self.model_.predict_proba(preprocess_text(X))[:, 1]
+            y_pred = cast("np.ndarray", self.model_.predict_proba(preprocess_text(X))[:, 1])
         else:
-            y_pred = self.model_.predict(preprocess_text(X))
+            y_pred = cast("np.ndarray", self.model_.predict(preprocess_text(X)))
             if len(y_pred.shape) > 1:
                 y_pred = y_pred[:, 1]
 
