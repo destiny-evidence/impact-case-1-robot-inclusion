@@ -163,11 +163,14 @@ class ResultHandler:
         self._assert_unique_id(reference_id)
         self.skipped[reference_id] = reason
 
-    def fail(self, reference_id: UUID, reason: str | None = None) -> None:
+    def fail(self, reference_id: UUID, reason: str | None = None, error: LinkedRobotError | None = None) -> None:
         """Mark reference as failed."""
         self.n_received += 1
         self._assert_unique_id(reference_id)
-        self.errors[reference_id] = LinkedRobotError(reference_id=reference_id, message=reason or "Encountered unspecified error.")
+        if error is not None:
+            self.errors[reference_id] = error
+        else:
+            self.errors[reference_id] = LinkedRobotError(reference_id=reference_id, message=reason or "Encountered unspecified error.")
 
         if self.max_batch_failure_rate and self.n_total and (failure_rate := len(self.errors) / self.n_total) > self.max_batch_failure_rate:
             raise FailureRateThresholdExceededError(f"Failed to enhance over {failure_rate:.2%} of references.")
